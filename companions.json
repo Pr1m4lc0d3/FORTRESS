@@ -1,0 +1,4 @@
+{
+  "_comment": "Optional capability providers. Every entry MUST be verified publicly installable before shipping. required is always false.",
+  "companions": []
+}
