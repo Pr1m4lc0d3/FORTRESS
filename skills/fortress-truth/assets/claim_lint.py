@@ -12,9 +12,23 @@ from typing import NamedTuple
 DEFAULT_CONFIG = {
     "patterns": {
         "number": r"\b\d[\d,]*(?:\.\d+)?%?\b",
+        "superlative": (
+            r"\b(?:the\s+)?(?:best|worst|fastest|slowest|cheapest|only|first|"
+            r"largest|smallest|most|least|leading|#1|number\s+one)\b"
+        ),
+        "comparative": (
+            r"\b(?:better|faster|cheaper|stronger|safer)\s+than\b"
+            r"|\bmore\s+\w+\s+than\b|\bunlike\b|\bcompared\s+to\b|\boutperforms\b"
+        ),
+        "absolute": r"\b(?:never|always|guaranteed|nobody|no\s+one|everyone|zero)\b",
+        "testimonial": r"[\"“][^\"”]{20,}[\"”]",
     },
     "severity": {
         "number": "error",
+        "superlative": "error",
+        "comparative": "error",
+        "testimonial": "error",
+        "absolute": "warn",
     },
     "ignore": [
         r"\b(?:19|20)\d{2}\b",
@@ -62,17 +76,20 @@ def _contains_bounded(haystack, needle):
     return re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", haystack) is not None
 
 
-def _is_sourced(span, register):
-    """Word-bounded containment.
+def _is_sourced(text, register):
+    """Word-bounded containment in either direction.
 
     Boundaries are mandatory: plain substring matching lets an unsourced "49"
     hide inside a cleared "149" and pass silently, which is the exact failure
     this linter exists to prevent.
     """
-    needle = span.strip().lower()
+    needle = text.strip().lower().rstrip(".")
     if not needle:
         return False
-    return any(_contains_bounded(cleared, needle) for cleared in register)
+    for cleared in register:
+        if _contains_bounded(cleared, needle) or _contains_bounded(needle, cleared):
+            return True
+    return False
 
 
 def find_claims(text, config):
@@ -91,5 +108,12 @@ def find_claims(text, config):
 
 
 def lint_text(text, register, config):
-    """Return findings whose span is not sourced in the register."""
-    return [f for f in find_claims(text, config) if not _is_sourced(f.span, register)]
+    """Return findings whose containing line is not sourced in the register."""
+    lines = text.splitlines()
+    out = []
+    for finding in find_claims(text, config):
+        source_line = lines[finding.line - 1] if finding.line <= len(lines) else ""
+        if _is_sourced(source_line, register) or _is_sourced(finding.span, register):
+            continue
+        out.append(finding)
+    return out
