@@ -19,14 +19,12 @@ FORTRESS is the defensive half of guerrilla marketing for AI agents. It doesn't 
 
 ## 2. Motte and bailey
 
-| Motte — survives any platform's decision | Bailey — rented, revocable |
+| Motte | Bailey |
 |---|---|
-| Your domain | A social account |
-| Your email list | A subreddit or forum profile |
-| The product itself | A marketplace listing |
-| The source code / the repo | A community you don't administer |
-| A reputation for accuracy | Follower count on any platform |
-| Direct customer relationships | Search ranking on someone else's index |
+| domain · email list · the product itself · a reputation for accuracy | social accounts · communities · directory listings · published content |
+| small, boring, cannot be confiscated | where the traffic actually is, revocable at any moment |
+
+Further examples, same sorting: a direct customer relationship and the source code / the repo are motte — nobody can revoke them. A marketplace listing and follower count on any platform are bailey — both live inside someone else's terms of service.
 
 A real medieval motte-and-bailey castle split its labor by design. The bailey is the enclosed yard at the bottom — workshops, stalls, the daily business of the place. Value gets produced there, and it's the first thing an attacker overruns. The motte is the raised mound and keep above it: small, cramped, unglamorous, and nearly impossible to take. You don't live on the motte. You survive on it.
 
@@ -74,13 +72,35 @@ Steps, in order:
 
 3. **Write `.monkeys/truth.md`** from `skills/fortress-truth/assets/truth.template.md`. Fill **Canonical source** with what the adopter gave. Move each verified fact into **Cleared**, each line ending ` — source: <exact source>`. Move everything else into **Uncleared**, each line ending ` — reason: <why>`.
 
-4. **Write `.monkeys/motte.md`** — one bullet per asset the adopter confirmed they own outright. No invented entries. An empty motte is an honest motte, not a placeholder to come back and fill in.
+4. **Write `.monkeys/motte.md`** — one bullet per asset the adopter confirmed they own outright, in exactly this shape. No invented entries. An empty **Held** section is an honest motte, not a placeholder to come back and fill in.
 
-5. **Write `.monkeys/bailey.md`** — two sections, `## Active` and `## Excluded`. Active lists channels in use or planned. Excluded lists channels ruled out, each with its reason — an exclusion recorded without a reason gets re-proposed every session, forever.
+   ```markdown
+   # Motte — what cannot be confiscated
+
+   ## Held
+   - <asset> — control: <full|partial> — grows by: <what moves it>
+
+   ## Wanted
+   - <asset not yet built> — why it matters
+   ```
+
+5. **Write `.monkeys/bailey.md`** — channels in use or planned under **Active**, channels ruled out under **Excluded**, in exactly this shape. An exclusion recorded without a reason gets re-proposed every session, forever — that's why **Excluded** entries require one.
+
+   ```markdown
+   # Bailey — rented ground
+
+   ## Active
+   - <channel> — account: <handle> — joined: <YYYY-MM-DD> — standing: <cold|warming|established> — links allowed: <yes|no>
+
+   ## Excluded
+   - <channel> — reason: <why this was ruled out>
+   ```
+
+   These two shapes are a contract, not a suggestion: `fortress-motte` reads **Held**/**Wanted**, `fortress-bailey` reads **Active**/**Excluded**, and `fortress-standing` reads the `standing:` and `links allowed:` fields on each **Active** line — that's why those fields live on the channel line itself rather than in a separate file. A skill that changes either shape breaks its siblings.
 
 6. **Write `.monkeys/scars.md`** — the adopter's own incident log, started empty: a three-column table (Incident / Damage / Rule) plus one sentence noting it gets filled in after something actually happens, never guessed in advance. This is the adopter's own log, separate from FORTRESS's own `scars.md`, which documents this plugin's history, not theirs.
 
-7. **Copy the linter.** `skills/fortress-truth/assets/claim_lint.py` and `skills/fortress-truth/assets/truth.config.json` into the adopter's repo at `tools/monkeys/`.
+7. **Copy the linter.** Read `skills/fortress-truth/assets/claim_lint.py` and `skills/fortress-truth/assets/truth.config.json` from this plugin, then Write each verbatim into the adopter's repo at `tools/monkeys/claim_lint.py` and `tools/monkeys/truth.config.json`. Read+Write, not a shell copy — this step works even where Bash is unavailable.
 
 8. **Add the contract line.** Append to `CLAUDE.md` if it exists, else `AGENTS.md` if that exists, else create `CLAUDE.md`:
 
