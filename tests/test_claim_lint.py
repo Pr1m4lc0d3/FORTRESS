@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -58,6 +60,23 @@ class TestNumberDetection(unittest.TestCase):
         self.assertEqual(1, len(findings))
         self.assertEqual(2, findings[0].line)
 
+    def test_number_not_sourced_by_bare_token_in_different_context(self):
+        findings = claim_lint.lint_text(
+            "Our platform serves 97 million requests a day.", self.register, self.config
+        )
+        self.assertTrue(
+            [f for f in findings if f.category == "number"],
+            "a cleared '97 downloads all-time' must not source '97 million requests'",
+        )
+
+    def test_unclosed_fence_does_not_blank_rest_of_document(self):
+        text = "Here is code:\n\n```\nport = 8080\n\nWe have 4200 active users.\n"
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            findings = claim_lint.lint_text(text, self.register, self.config)
+        spans = [f.span for f in findings if f.category == "number"]
+        self.assertIn("4200", spans, "an unterminated fence must not disable the scan")
+        self.assertIn("unterminated code fence", err.getvalue())
+
     def test_number_does_not_match_inside_larger_number(self):
         register = {"pricing is 79 / 149 / 249 one-time"}
         findings = claim_lint.lint_text("It costs 49 dollars.", register, self.config)
@@ -114,6 +133,89 @@ class TestClaimCategories(unittest.TestCase):
 
     def test_flags_hash_one_superlative(self):
         self.assertIn("superlative", self._categories("We are #1 in the market."))
+
+
+class TestRegisterSchema(unittest.TestCase):
+    def test_cleared_entry_without_source_suffix_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            register_path = Path(tmp) / "truth.md"
+            register_path.write_text(
+                "# Truth Register\n\n## Cleared\n\n- 40,000 users\n", encoding="utf-8"
+            )
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                register = claim_lint.load_register(register_path)
+            self.assertEqual(set(), register)
+            self.assertIn("malformed Cleared entry", err.getvalue())
+            findings = claim_lint.lint_text(
+                "We serve 40,000 users.", register, claim_lint.DEFAULT_CONFIG
+            )
+            self.assertTrue(
+                [f for f in findings if f.category == "number"],
+                "an unsourced register entry must not source anything",
+            )
+
+    def test_cleared_entry_with_source_suffix_is_accepted(self):
+        register = claim_lint.load_register(FIXTURES / "truth.md")
+        self.assertTrue(register)
+
+
+class TestConfigGate(unittest.TestCase):
+    def _run_with_config(self, body):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "truth.config.json"
+            config_path.write_text(body, encoding="utf-8")
+            draft = Path(tmp) / "draft.md"
+            draft.write_text("We have 4200 users.\n", encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                code = claim_lint.main(
+                    [
+                        str(draft),
+                        "--register",
+                        str(FIXTURES / "truth.md"),
+                        "--config",
+                        str(config_path),
+                    ]
+                )
+            return code, err.getvalue()
+
+    def test_catch_all_ignore_is_refused(self):
+        code, err = self._run_with_config('{"ignore": [".*"]}')
+        self.assertEqual(2, code)
+        self.assertIn("catch-all ignore pattern", err)
+        self.assertIn("may not disable detection", err)
+
+    def test_all_warn_severity_is_refused(self):
+        code, err = self._run_with_config(
+            '{"severity": {"number": "warn", "superlative": "warn",'
+            ' "comparative": "warn", "testimonial": "warn", "absolute": "warn"}}'
+        )
+        self.assertEqual(2, code)
+        self.assertIn("never fail", err)
+
+    def test_invalid_severity_value_is_refused(self):
+        code, err = self._run_with_config('{"severity": {"number": "eror"}}')
+        self.assertEqual(2, code)
+        self.assertIn("invalid severity 'eror'", err)
+
+    def test_shipped_config_is_accepted(self):
+        shipped = (ASSETS / "truth.config.json").read_text(encoding="utf-8")
+        code, err = self._run_with_config(shipped)
+        self.assertEqual(1, code, err)
+
+    def test_config_is_echoed_on_every_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft = Path(tmp) / "draft.md"
+            draft.write_text("All clear here.\n", encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                code = claim_lint.main(
+                    [str(draft), "--register", str(FIXTURES / "truth.md")]
+                )
+            self.assertEqual(0, code)
+            echoed = err.getvalue()
+            self.assertIn("claim-lint: config: built-in defaults", echoed)
+            self.assertIn("number=error", echoed)
+            self.assertIn("absolute=warn", echoed)
+            self.assertIn("ignore patterns: 1", echoed)
 
 
 class TestCli(unittest.TestCase):

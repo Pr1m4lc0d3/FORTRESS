@@ -5,7 +5,7 @@ description: Use when deciding what to build first, evaluating whether an asset 
 
 # fortress-motte
 
-FORTRESS doctrine: build what can't be taken. This skill is the motte side of that question — what an adopter owns outright, and what still needs building.
+FORTRESS doctrine: **Build what can't be taken.** This skill is the motte side of that question — what an adopter owns outright, and what still needs building.
 
 ## 1. What qualifies as motte
 

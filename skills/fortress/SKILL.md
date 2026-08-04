@@ -58,6 +58,13 @@ Run this once, the first time FORTRESS is adopted into a repo. If `.monkeys/trut
 
 State this plainly before starting, and mean it: **nothing here is pre-filled.** Every fact, asset, and channel in the generated pack comes from this adopter's own product, gathered by interview and checked against their own canonical source. A generic template with plausible-looking example numbers would be exactly the unsourced-claim problem this plugin exists to prevent — shipping one would make kickoff itself the first violation of the doctrine.
 
+Two roots are in play throughout these steps, and mixing them up is why kickoff fails cold:
+
+- **Plugin root** — where this plugin is installed. Address it with `${CLAUDE_PLUGIN_ROOT}`; everything you *read* from FORTRESS lives under it.
+- **Adopter's repo root** — the directory you are working in. Every path you *write* (`.monkeys/…`, `tools/monkeys/…`, `CLAUDE.md`) is relative to it.
+
+A bare `skills/…` path is neither: it resolves against the adopter's working directory, where this plugin is not checked out, and the Read fails.
+
 Steps, in order:
 
 1. **Interview the adopter.** Ask, one question at a time:
@@ -70,7 +77,7 @@ Steps, in order:
 
 2. **Fetch the canonical source.** Use WebFetch for a URL, Read for a local document. Cross-check every fact the adopter gave you against what's actually there. A fact that matches goes to Cleared. A fact that doesn't match, or that can't be verified this way, goes to Uncleared with the reason — never invent the missing verification to make the fact clearable.
 
-3. **Write `.monkeys/truth.md`** from `skills/fortress-truth/assets/truth.template.md`. Fill **Canonical source** with what the adopter gave. Move each verified fact into **Cleared**, each line ending ` — source: <exact source>`. Move everything else into **Uncleared**, each line ending ` — reason: <why>`.
+3. **Write `.monkeys/truth.md`** (adopter's repo root) from `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/truth.template.md`. The template ships placeholders only — no example numbers to leave behind by accident, and any bullet you write under **Cleared** without a ` — source:` suffix is ignored by the linter. Fill **Canonical source** with what the adopter gave. Move each verified fact into **Cleared**, each line ending ` — source: <exact source>`. Move everything else into **Uncleared**, each line ending ` — reason: <why>`.
 
 4. **Write `.monkeys/motte.md`** — one bullet per asset the adopter confirmed they own outright, in exactly this shape. No invented entries. An empty **Held** section is an honest motte, not a placeholder to come back and fill in.
 
@@ -100,7 +107,7 @@ Steps, in order:
 
 6. **Write `.monkeys/scars.md`** — the adopter's own incident log, started empty: a three-column table (Incident / Damage / Rule) plus one sentence noting it gets filled in after something actually happens, never guessed in advance. This is the adopter's own log, separate from FORTRESS's own `scars.md`, which documents this plugin's history, not theirs.
 
-7. **Copy the linter.** Read `skills/fortress-truth/assets/claim_lint.py` and `skills/fortress-truth/assets/truth.config.json` from this plugin, then Write each verbatim into the adopter's repo at `tools/monkeys/claim_lint.py` and `tools/monkeys/truth.config.json`. Read+Write, not a shell copy — this step works even where Bash is unavailable.
+7. **Copy the linter.** Read `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/claim_lint.py` and `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/truth.config.json`, then Write each verbatim into the adopter's repo at `tools/monkeys/claim_lint.py` and `tools/monkeys/truth.config.json` (both relative to the adopter's repo root). Read+Write, not a shell copy — this step works even where Bash is unavailable. Write the config **verbatim**: the linter refuses a config that would disable detection, and a hand-edited catch-all `ignore` will make every later run exit 2.
 
 8. **Add the contract line.** Append to `CLAUDE.md` if it exists, else `AGENTS.md` if that exists, else create `CLAUDE.md`:
 
@@ -112,7 +119,9 @@ Steps, in order:
 
 Read `companions.json` at the plugin root. For each entry, check the filesystem for whether its provider is already available, and report the result **by capability**, not by tool name — "browser automation for one-click publish," never the name of a specific MCP server or package. Offer to install a missing one only when the adopter explicitly consents; never install anything silently.
 
-If `companions.json` has an empty `companions` array — the shipped default — report exactly that: **"No optional capabilities needed — FORTRESS runs entirely on built-in tools."** That is the correct and complete answer for an empty manifest, not a gap to apologize for.
+As shipped, `companions.json` holds **one** entry: browser automation, which lets `fortress-gate` execute the copy-paste step of a send a human has already approved. It is optional — every FORTRESS skill produces its full deliverable without it — so report it as an available accelerant, never as a missing requirement.
+
+If a `companions.json` ever has an **empty** `companions` array, that is not a defect either: report exactly **"No optional capabilities needed — FORTRESS runs entirely on built-in tools."** An empty manifest is a complete answer, not a gap to apologize for.
 
 ## 6. Routing table
 

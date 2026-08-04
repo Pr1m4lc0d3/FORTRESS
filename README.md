@@ -94,7 +94,7 @@ and the other is the sentence you're never allowed to write.
 
 ```
 /plugin marketplace add ./FORTRESS
-/plugin install fortress
+/plugin install fortress@fortress
 ```
 
 Or point the marketplace command at wherever this repository is checked out locally

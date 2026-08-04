@@ -40,36 +40,89 @@ DEFAULT_CONFIG = {
 }
 
 
+CATCH_ALL_IGNORES = {".*", ".+", "^.*$", "(.*)"}
+VALID_SEVERITIES = ("error", "warn")
+SOURCE_SUFFIX = " — source:"
+WINDOW_WORDS = 3
+
+
+class ConfigRefused(Exception):
+    """A config that would disable detection rather than narrow a false positive."""
+
+
 class Finding(NamedTuple):
     line: int
     category: str
     span: str
     severity: str
+    col: int = 0
 
 
 def load_register(path):
-    """Return the set of lowercased 'Cleared' lines from a truth register."""
+    """Return the set of lowercased 'Cleared' lines from a truth register.
+
+    A Cleared bullet without a ' — source:' suffix is MALFORMED and is excluded.
+    An unsourced register entry must not be able to source anything — otherwise
+    the register becomes a place to launder a number by writing it down.
+    """
     cleared = set()
     if not Path(path).exists():
         return cleared
     section = None
-    for raw in Path(path).read_text(encoding="utf-8").splitlines():
+    for lineno, raw in enumerate(
+        Path(path).read_text(encoding="utf-8").splitlines(), start=1
+    ):
         line = raw.strip()
         if line.lower().startswith("## "):
             section = line[3:].strip().lower()
             continue
         if section == "cleared" and line.startswith("- "):
-            cleared.add(line[2:].strip().lower())
+            entry = line[2:].strip()
+            if SOURCE_SUFFIX.lower() not in entry.lower():
+                print(
+                    f"claim-lint: WARNING: {Path(path)}:{lineno}: malformed Cleared "
+                    "entry, no 'source:' suffix (the template's em-dash form); "
+                    f"IGNORED, it sources nothing: {entry!r}",
+                    file=sys.stderr,
+                )
+                continue
+            cleared.add(entry.lower())
     return cleared
 
 
 def strip_noise(text):
-    """Blank out fenced code, inline code and URLs, preserving offsets."""
+    """Blank out fenced code, inline code and URLs, preserving offsets.
+
+    Fences are paired EXPLICITLY. An unterminated fence must not blank the rest
+    of the document: a single typo would otherwise switch the gate off for
+    everything after it and still report all-clear.
+    """
+
+    def blank_span(chunk):
+        return re.sub(r"\S", " ", chunk)
 
     def blank(match):
-        return re.sub(r"\S", " ", match.group(0))
+        return blank_span(match.group(0))
 
-    text = re.sub(r"```.*?```", blank, text, flags=re.DOTALL)
+    markers = list(re.finditer(r"```", text))
+    if len(markers) % 2:
+        unterminated = markers[-1]
+        line = text.count("\n", 0, unterminated.start()) + 1
+        print(
+            f"claim-lint: WARNING: unterminated code fence at line {line}; "
+            "the text after it is being SCANNED, not treated as code.",
+            file=sys.stderr,
+        )
+    chunks = []
+    cursor = 0
+    for index in range(len(markers) // 2):
+        start = markers[2 * index].start()
+        end = markers[2 * index + 1].end()
+        chunks.append(text[cursor:start])
+        chunks.append(blank_span(text[start:end]))
+        cursor = end
+    chunks.append(text[cursor:])
+    text = "".join(chunks)
     text = re.sub(r"`[^`\n]*`", blank, text)
     text = re.sub(r"https?://\S+", blank, text)
     return text
@@ -99,6 +152,23 @@ def _is_sourced(text, register):
     return any(_contains_bounded(cleared, needle) for cleared in register)
 
 
+def _span_window(line, col, span):
+    """The span plus the next few words on its line, whitespace-normalised.
+
+    A BARE span is not evidence of sourcing. The token "97" sits inside a cleared
+    "97 downloads all-time" no matter what the draft says next to it, so checking
+    the token alone lets "97 million requests a day" ride in on it. Only the span
+    IN CONTEXT may vouch for itself.
+
+    If the offset does not line up, fall back to the whole line — the strict
+    check — never to the bare span.
+    """
+    if col < 0 or line[col:col + len(span)] != span:
+        return line
+    following = line[col + len(span):].split()[:WINDOW_WORDS]
+    return " ".join(span.split() + following)
+
+
 def find_claims(text, config):
     findings = []
     cleaned = strip_noise(text)
@@ -110,7 +180,8 @@ def find_claims(text, config):
             if any(ig.fullmatch(span) for ig in ignores):
                 continue
             line = cleaned.count("\n", 0, match.start()) + 1
-            findings.append(Finding(line, category, span, severity))
+            col = match.start() - (cleaned.rfind("\n", 0, match.start()) + 1)
+            findings.append(Finding(line, category, span, severity, col))
     return findings
 
 
@@ -120,7 +191,8 @@ def lint_text(text, register, config):
     out = []
     for finding in find_claims(text, config):
         source_line = lines[finding.line - 1] if finding.line <= len(lines) else ""
-        if _is_sourced(source_line, register) or _is_sourced(finding.span, register):
+        window = _span_window(source_line, finding.col, finding.span)
+        if _is_sourced(source_line, register) or _is_sourced(window, register):
             continue
         out.append(finding)
     return out
@@ -129,8 +201,60 @@ def lint_text(text, register, config):
 SCAN_SUFFIXES = {".md", ".markdown", ".txt"}
 
 
+NARROW_NOT_DISABLE = (
+    "A config may narrow a false positive; it may not disable detection."
+)
+
+
+def validate_config(config):
+    """Refuse a config that turns the gate off instead of narrowing it.
+
+    The config file is loaded from the adopter's own repo. If it can silently
+    suppress every finding, the green all-clear it produces is worth nothing —
+    and nothing in the output would have said so.
+    """
+    for pattern in config.get("ignore", []):
+        try:
+            matches_empty = re.compile(pattern).fullmatch("") is not None
+        except re.error as exc:
+            raise ConfigRefused(f"invalid ignore pattern {pattern!r}: {exc}")
+        if pattern.strip() in CATCH_ALL_IGNORES or matches_empty:
+            raise ConfigRefused(
+                f"catch-all ignore pattern {pattern!r} would suppress every "
+                f"finding. {NARROW_NOT_DISABLE}"
+            )
+    severity = config.get("severity", {})
+    for category, value in severity.items():
+        if value not in VALID_SEVERITIES:
+            raise ConfigRefused(
+                f"invalid severity {value!r} for category {category!r}; expected "
+                f"one of {', '.join(VALID_SEVERITIES)}. {NARROW_NOT_DISABLE}"
+            )
+    if severity and all(value == "warn" for value in severity.values()):
+        raise ConfigRefused(
+            "every category is set to 'warn', so the run can never fail. "
+            + NARROW_NOT_DISABLE
+        )
+
+
+def describe_config(config, source):
+    """One line naming what the gate is actually set to for this run."""
+    categories = ", ".join(
+        f"{name}={config['severity'].get(name, 'error')}"
+        for name in sorted(config["patterns"])
+    )
+    return (
+        f"claim-lint: config: {source} | categories: {categories} "
+        f"| ignore patterns: {len(config.get('ignore', []))}"
+    )
+
+
 def load_config(explicit=None):
-    """Load config from an explicit path, else tools/monkeys/truth.config.json, else defaults."""
+    """Return (config, source-label).
+
+    Loads an explicit path, else tools/monkeys/truth.config.json, else defaults.
+    Raises ConfigRefused for a config that would disable detection.
+    """
     candidates = []
     if explicit:
         candidates.append(Path(explicit))
@@ -142,8 +266,10 @@ def load_config(explicit=None):
             for key in ("patterns", "severity"):
                 if key in loaded:
                     merged[key] = {**DEFAULT_CONFIG[key], **loaded[key]}
-            return merged
-    return DEFAULT_CONFIG
+            validate_config(merged)
+            return merged, str(candidate)
+    validate_config(DEFAULT_CONFIG)
+    return DEFAULT_CONFIG, "built-in defaults"
 
 
 def lint_path(target, register, config):
@@ -179,6 +305,16 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
+    try:
+        config, config_source = load_config(args.config)
+    except ConfigRefused as exc:
+        print(f"claim-lint: refusing config: {exc}", file=sys.stderr)
+        return 2
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"claim-lint: unreadable config: {exc}", file=sys.stderr)
+        return 2
+    print(describe_config(config, config_source), file=sys.stderr)
+
     target = Path(args.target)
     if not target.exists():
         print(f"claim-lint: target not found: {target}", file=sys.stderr)
@@ -193,7 +329,6 @@ def main(argv=None):
         return 2
 
     register = load_register(register_path)
-    config = load_config(args.config)
     results = lint_path(target, register, config)
 
     errors = 0

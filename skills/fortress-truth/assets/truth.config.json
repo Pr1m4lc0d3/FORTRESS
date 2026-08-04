@@ -1,5 +1,5 @@
 {
-  "_comment": "Tune per project. Categories map to severity: 'error' fails the run, 'warn' reports only. Add project-specific ignore patterns (product version strings, SKUs) to 'ignore'.",
+  "_comment": "Tune per project. Categories map to severity: 'error' fails the run, 'warn' reports only. Ignore patterns are matched against the MATCHED SPAN, not the line; add project-specific ones (build numbers, SKUs) to 'ignore'. The linter REFUSES a catch-all ignore, an all-'warn' severity map, or an unrecognised severity value: a config may narrow a false positive, it may not disable detection.",
   "severity": {
     "number": "error",
     "superlative": "error",
@@ -8,7 +8,6 @@
     "absolute": "warn"
   },
   "ignore": [
-    "\\b(?:19|20)\\d{2}\\b",
-    "\\bv\\d+(?:\\.\\d+)*\\b"
+    "\\b(?:19|20)\\d{2}\\b"
   ]
 }

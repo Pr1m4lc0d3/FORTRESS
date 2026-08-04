@@ -5,7 +5,7 @@ description: Use when about to post or comment in a community, joining a new pla
 
 # fortress-standing
 
-FORTRESS doctrine: build what can't be taken. This is the highest-consequence skill in the plugin. Everything else in FORTRESS is recoverable — a bad line of copy gets edited, an excluded channel gets reconsidered later. A ban is not recoverable.
+FORTRESS doctrine: **Build what can't be taken.** This is the highest-consequence skill in the plugin. Everything else in FORTRESS is recoverable — a bad line of copy gets edited, an excluded channel gets reconsidered later. A ban is not recoverable.
 
 ## 1. Why this is the highest-consequence skill
 

@@ -5,7 +5,7 @@ description: Use before publishing, posting, submitting, or sending anything out
 
 # fortress-gate
 
-FORTRESS doctrine: build what can't be taken. Staging a draft costs nothing and can be redone infinitely. Sending it does not — an outward action, once taken, is hard or impossible to reverse, and this skill exists to put a real check between the two.
+FORTRESS doctrine: **Build what can't be taken.** Staging a draft costs nothing and can be redone infinitely. Sending it does not — an outward action, once taken, is hard or impossible to reverse, and this skill exists to put a real check between the two.
 
 ## 1. Staging is free, sending is not
 

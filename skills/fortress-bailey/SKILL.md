@@ -5,7 +5,7 @@ description: Use when choosing a channel, evaluating a platform, deciding where 
 
 # fortress-bailey
 
-FORTRESS doctrine: build what can't be taken. This skill is the bailey side of that question — the rented ground where work actually happens, and the discipline for using it without losing anything permanent to it.
+FORTRESS doctrine: **Build what can't be taken.** This skill is the bailey side of that question — the rented ground where work actually happens, and the discipline for using it without losing anything permanent to it.
 
 ## 1. What the bailey is
 

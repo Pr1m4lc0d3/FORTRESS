@@ -5,14 +5,14 @@ The linter parses this file. Keep the format exactly.
 
 ## Cleared
 
-<!-- One bullet per fact. Must end with " — source: <where it came from>". -->
-<!-- Example: - 97 downloads all-time — source: analytics dashboard, 2026-08-04 -->
+<!-- One bullet per fact, in this exact shape. A bullet without the " — source:" -->
+<!-- suffix is malformed: the linter ignores it, and it sources nothing. -->
+<!-- - <the claim, exactly as it will appear in copy> — source: <where this was verified> -->
 
 ## Uncleared
 
 <!-- Facts that may NOT be stated publicly without re-verification. -->
-<!-- Must end with " — reason: <why it is not cleared>". -->
-<!-- Example: - community member counts — reason: third-party, conflicting figures -->
+<!-- - <the fact> — reason: <why it is not cleared> -->
 
 ## Canonical source
 

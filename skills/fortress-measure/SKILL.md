@@ -5,7 +5,7 @@ description: Use when reviewing whether marketing worked, choosing what metrics 
 
 # fortress-measure
 
-FORTRESS doctrine: build what can't be taken. Measurement is where that doctrine gets tested against results — not every number that goes up means ground was actually held.
+FORTRESS doctrine: **Build what can't be taken.** Measurement is where that doctrine gets tested against results — not every number that goes up means ground was actually held.
 
 ## 1. Few numbers, honestly
 
