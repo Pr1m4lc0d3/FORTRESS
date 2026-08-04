@@ -12,9 +12,74 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
+MONTH_NAMES = (
+    "January February March April May June July August September October "
+    "November December Jan Feb Mar Apr Jun Jul Aug Sept Sep Oct Nov Dec"
+).split()
+
+# Number words, longest first so the alternation prefers "seventeen" over "seven".
+NUMBER_WORDS = sorted(
+    (
+        "one two three four five six seven eight nine ten eleven twelve "
+        "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty "
+        "thirty forty fifty sixty seventy eighty ninety"
+    ).split(),
+    key=len,
+    reverse=True,
+)
+
+# "one" and "two" are ordinary prose words ("one place", "two halves") and are
+# excluded from the bare-count branch below, which would otherwise fire on most
+# English sentences. They are still matched in front of an explicit magnitude
+# word, where "one million users" is unambiguously a quantity claim.
+AMBIGUOUS_NUMBER_WORDS = ("one", "two")
+COUNTABLE_NUMBER_WORDS = [w for w in NUMBER_WORDS if w not in AMBIGUOUS_NUMBER_WORDS]
+
+MAGNITUDE_WORDS = ["hundred", "thousand", "million", "billion", "trillion"]
+
+_MONTHS = "|".join(MONTH_NAMES)
+_NUMS = "|".join(NUMBER_WORDS)
+_COUNTABLE_NUMS = "|".join(COUNTABLE_NUMBER_WORDS)
+_MAGS = "|".join(MAGNITUDE_WORDS)
+
+# Genuine DATE FORMATS only. A bare year is a claim ("Founded in 2024" is a
+# factual assertion about a company) and is deliberately NOT ignored: the old
+# \b(?:19|20)\d{2}\b exempted every integer from 1900 to 2099, so "Over 2000
+# people signed up" passed clean — exactly the shape an invented stat takes.
+DATE_FORMS = (
+    r"\b\d{4}-\d{2}-\d{2}\b"
+    rf"|\b(?:\d{{1,2}}\s+)?(?:{_MONTHS})\.?\s+(?:\d{{1,2}},?\s+)?\d{{4}}\b"
+)
+
+MAGNITUDE_PATTERN = (
+    # "forty thousand", "one million", "twenty-five thousand" — one span.
+    rf"\b(?:{_NUMS})(?:[\s-]+(?:{_NUMS}))?\s+(?:{_MAGS})s?\b"
+    # "hundreds of teams", "millions of requests", "thousands rely on us".
+    rf"|\b(?:{_MAGS})s(?:\s+of)?\b"
+    # Vague magnitude quantifiers.
+    r"|\bdozens(?:\s+of)?\b|\ba\s+dozen\b|\bscores\s+of\b"
+    r"|\ba\s+handful\s+of\b"
+    r"|\b(?:countless|numerous)\b"
+    # A number word quantifying a plural noun within a couple of words:
+    # "forty paying customers".
+    rf"|\b(?:{_COUNTABLE_NUMS})\s+(?:\w+\s+){{0,1}}\w{{3,}}s\b"
+)
+
+TESTIMONIAL_PATTERN = (
+    # Straight or curly double quotes.
+    r"[\"“][^\"”]{20,}[\"”]"
+    # A markdown blockquote line with 20+ characters of text.
+    r"|(?m:^[ \t]{0,3}>[ \t]*\S.{19,})"
+    # Single-quoted spans. The lookaround keeps an apostrophe inside a word
+    # ("doesn't ... you're") from being read as an opening quote.
+    r"|(?<![\w'’])'[^'’\n]{20,}'(?!\w)"
+    r"|(?<![\w'’])‘[^’\n]{20,}’(?!\w)"
+)
+
 DEFAULT_CONFIG = {
     "patterns": {
         "number": r"\b\d[\d,]*(?:\.\d+)?%?\b",
+        "magnitude": MAGNITUDE_PATTERN,
         "superlative": (
             r"\b(?:the\s+)?(?:best|worst|fastest|slowest|cheapest|only|first|"
             r"largest|smallest|most|least|leading|number\s+one)\b"
@@ -25,17 +90,18 @@ DEFAULT_CONFIG = {
             r"|\bmore\s+\w+\s+than\b|\bunlike\b|\bcompared\s+to\b|\boutperforms\b"
         ),
         "absolute": r"\b(?:never|always|guaranteed|nobody|no\s+one|everyone|zero)\b",
-        "testimonial": r"[\"“][^\"”]{20,}[\"”]",
+        "testimonial": TESTIMONIAL_PATTERN,
     },
     "severity": {
         "number": "error",
+        "magnitude": "error",
         "superlative": "error",
         "comparative": "error",
         "testimonial": "error",
         "absolute": "warn",
     },
     "ignore": [
-        r"\b(?:19|20)\d{2}\b",
+        DATE_FORMS,
     ],
 }
 
@@ -175,10 +241,25 @@ def _span_window(line, col, span):
     return " ".join(span.split() + following)
 
 
+def _blank_ignored(text, ignores):
+    """Blank every region matching an ignore pattern, preserving offsets.
+
+    An ignore is applied to the TEXT, not only to a finished span. A span-only
+    check cannot express a multi-token exemption: the number detector splits
+    '2026-08-04' into the three spans '2026', '08' and '04', so no pattern
+    fullmatching the whole date could ever silence it. Blanking the region does.
+    The span-level fullmatch is kept as well, so an anchored pattern that only
+    makes sense against a span still works.
+    """
+    for ignore in ignores:
+        text = ignore.sub(lambda m: re.sub(r"\S", " ", m.group(0)), text)
+    return text
+
+
 def find_claims(text, config):
     findings = []
-    cleaned = strip_noise(text)
     ignores = [re.compile(p, re.IGNORECASE) for p in config.get("ignore", [])]
+    cleaned = _blank_ignored(strip_noise(text), ignores)
     for category, pattern in config["patterns"].items():
         severity = config["severity"].get(category, "error")
         for match in re.finditer(pattern, cleaned, flags=re.IGNORECASE):
@@ -204,7 +285,15 @@ def lint_text(text, register, config):
     return out
 
 
-SCAN_SUFFIXES = {".md", ".markdown", ".txt"}
+SCAN_SUFFIXES = {
+    ".md",
+    ".markdown",
+    ".mdx",
+    ".txt",
+    ".rst",
+    ".html",
+    ".htm",
+}
 
 
 CONFIG_RULE = (

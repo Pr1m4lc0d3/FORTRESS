@@ -78,7 +78,7 @@ A bare `skills/fortress-truth/assets/...` path resolves against the adopter's wo
 python tools/monkeys/claim_lint.py <draft-or-dir>
 ```
 
-`<draft-or-dir>` is a single file or a directory; a directory is scanned recursively for `.md`, `.markdown`, and `.txt` files.
+`<draft-or-dir>` is a single file or a directory; a directory is scanned recursively for `.md`, `.markdown`, `.mdx`, `.txt`, `.rst`, `.html`, and `.htm` files. A store listing or a landing page is copy like any other, and it does not get a green pass for being HTML. `.json` is deliberately **not** scanned: it is rarely prose, and scanning it produced findings on keys and ids rather than on claims.
 
 Flags:
 
@@ -93,20 +93,37 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | `0` | No error-severity findings, or `--report` was passed. |
-| `1` | At least one error-severity finding (`number`, `superlative`, `comparative`, `testimonial`). |
+| `1` | At least one error-severity finding (`number`, `magnitude`, `superlative`, `comparative`, `testimonial`). |
 | `2` | The target path or the register file does not exist, **or the config was refused** (see §6). |
 
 Every run prints one line to stderr naming the active config before it scans anything:
 
 ```
-claim-lint: config: tools/monkeys/truth.config.json | categories: absolute=warn, comparative=error, number=error, superlative=error, testimonial=error | ignore patterns: 1: \b(?:19|20)\d{2}\b
+claim-lint: config: tools/monkeys/truth.config.json | categories: absolute=warn, comparative=error, magnitude=error, number=error, superlative=error, testimonial=error | ignore patterns: 1: \b\d{4}-\d{2}-\d{2}\b|\b(?:\d{1,2}\s+)?(?:January|February|…|Dec)\.?\s+(?:\d{1,2},?\s+)?\d{4}\b
 ```
+
+(The month alternation is elided here for width. It is printed in full on every real run — the whole point of the line is that nothing about the tuning is abbreviated where it matters.)
 
 Every ignore pattern in effect is printed **in full**, not counted. That is deliberate and it is load-bearing: an ignore regex can retire a whole category — `\d+` silences every number as surely as `.*` silences everything — and no validator can judge for you whether a given regex is too broad. Printing them is the defence, because the weakening then appears in the same output as the verdict it produced.
 
 A gate that can be tuned has to say how it is currently tuned. Read that line before trusting a green run — an all-clear from a config you have not read is not evidence of anything.
 
-`absolute` findings (`never`, `always`, `guaranteed`, `nobody`, `no one`, `everyone`, `zero`) are `warn` severity — they print but never fail the run. Every other category is `error` severity and fails the run when unsourced.
+### The detection categories
+
+| Category | Severity | Detects |
+|---|---|---|
+| `number` | `error` | Digits and percentages: `4200`, `40,000`, `4.5`, `18%`. **A bare year is included** — see below. |
+| `magnitude` | `error` | Quantities written as words: `forty thousand`, `one million`, `hundreds of`, `millions of`, `dozens of`, `scores of`, `a handful of`, `countless`, `numerous`, and a number word quantifying a plural noun (`forty paying customers`). |
+| `superlative` | `error` | `best`, `worst`, `fastest`, `only`, `first`, `largest`, `most`, `leading`, `number one`, `#1`. |
+| `comparative` | `error` | `better than`, `more X than`, `unlike`, `compared to`, `outperforms`. |
+| `testimonial` | `error` | Quote-shaped spans of 20+ characters: straight or curly **double** quotes, **single** quotes, and a markdown **blockquote** line. |
+| `absolute` | `warn` | `never`, `always`, `guaranteed`, `nobody`, `no one`, `everyone`, `zero`. |
+
+`absolute` findings are `warn` severity — they print but never fail the run. Every other category is `error` severity and fails the run when unsourced.
+
+**A bare year is a claim.** `Founded in 2024` is a factual assertion about a company and belongs in the register like any other. Only genuine **date formats** are exempt: ISO (`2026-08-04`) and written (`January 2024`, `12 March 2026`, `March 12, 2026`). The exemption used to be `\b(?:19|20)\d{2}\b`, which was meant to silence dates and in fact exempted every integer from 1900 to 2099 — so `Over 2000 people signed up.` and `We processed 1999 orders.` passed clean. Round numbers in that range are exactly the shape an invented stat takes.
+
+**A stat does not stop being a stat when it is spelled out.** That is what `magnitude` is for. It is deliberately narrower than every number word in English: `one` and `two` are matched only in front of an explicit magnitude word (`one million users` flags; `one place to look` does not), because a linter that fires on ordinary prose gets switched off, and a switched-off linter is itself a false negative.
 
 Run it before any copy goes public: PR checks on marketing content, a pre-publish hook, or by hand before pasting into a post.
 
@@ -141,14 +158,21 @@ A guard that implied otherwise — that a clean lint run means the copy is true 
 
 ## 8. Tuning
 
-False positives happen: a year in running prose, a build number, a SKU that looks like a bare number. Fix these by adding a pattern to `ignore` in `truth.config.json`. The detection patterns themselves are not editable — a `patterns` key exits 2 — so the ignore list is the whole tuning surface, and **how tight you keep it is the whole of the discipline.** Write the narrowest pattern that clears the specific false positive: `\b4471\b`, not `\d+`. A lazy-wide ignore reopens the exact hole this skill exists to close, and the only thing standing between that and a false all-clear is that the pattern is printed on every run for someone to notice.
+False positives happen: a build number, a SKU that looks like a bare number, an issue id. Fix these by adding a pattern to `ignore` in `truth.config.json`. The detection patterns themselves are not editable — a `patterns` key exits 2 — so the ignore list is the whole tuning surface, and **how tight you keep it is the whole of the discipline.** Write the narrowest pattern that clears the specific false positive: `\b4471\b`, not `\d+`. A lazy-wide ignore reopens the exact hole this skill exists to close, and the only thing standing between that and a false all-clear is that the pattern is printed on every run for someone to notice.
 
-**Ignore patterns are matched against the matched span, not the line.** The span is only the text the detector matched, so write the pattern for that, not for the surrounding sentence. Check what the span actually is before writing the pattern — the finding prints it:
+**An ignore pattern blanks the region of text it matches, before detection runs.** It also drops any finding whose span it fullmatches, so a pattern written against a span still works. Blanking the region is what makes a **multi-token** exemption expressible at all: the number detector splits `2026-08-04` into the three spans `2026`, `08` and `04`, so a span-only check could never silence a date with one pattern no matter how it was written. That is why the shipped date exemption works and why the old year ignore never covered ISO dates.
+
+The practical consequence is that an ignore is **wider than it looks** — it removes text from the scan, not just one finding. Check what the span actually is before writing the pattern; the finding prints it:
 
 ```
 draft.md:1: error: unsourced number: '4471'
 ```
 
-That finding is silenced by `"\\b4471\\b"`. It is **not** silenced by a pattern describing the words around it.
+That finding is silenced by `"\\b4471\\b"`, which blanks exactly those four characters. A pattern describing the surrounding sentence would blank the sentence — including any other claim in it.
 
-The shipped `ignore` list contains one entry, `\b(?:19|20)\d{2}\b`, for four-digit years. Version strings are deliberately **not** ignored: in `v2.3.1` the detector matches the span `3.1`, so no `v`-prefixed pattern can ever fire on it, and a pattern loose enough to catch `3.1` (`\d+\.\d+`) would also swallow `4.5 stars` and every other decimal claim in your copy. That trade is a false negative, which is the failure this tool exists to prevent — so the honest options are to source the version string in the register or to accept the finding, not to bolt on an ignore that costs more than it saves.
+The shipped `ignore` list contains one entry: an alternation matching **genuine date formats only**, ISO (`\d{4}-\d{2}-\d{2}`) and written (a month name adjacent to a year). Two things it deliberately does **not** cover:
+
+- **Bare years are not ignored.** `Founded in 2024` flags, by design — it is a factual assertion and it belongs in the register. The previous entry, `\b(?:19|20)\d{2}\b`, was written to silence dates and instead exempted every integer from 1900 to 2099.
+- **Version strings are not ignored.** In `v2.3.1` the detector matches the span `3.1`, so no `v`-prefixed pattern can ever fire on it, and a pattern loose enough to catch `3.1` (`\d+\.\d+`) would also swallow `4.5 stars` and every other decimal claim in your copy. That trade is a false negative, which is the failure this tool exists to prevent — so the honest options are to source the version string in the register or to accept the finding, not to bolt on an ignore that costs more than it saves.
+
+One known noise source, stated rather than hidden: the double-quote testimonial pattern is not line-bounded, so a single unpaired `"` in a document can produce one very large span running to the next quote character. It is left that way on purpose — bounding it to a single line would miss a testimonial that is hard-wrapped across two, and a missed testimonial is the failure mode this tool exists to prevent. Noise you can see is the safer side of that trade.

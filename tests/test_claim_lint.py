@@ -31,11 +31,48 @@ class TestNumberDetection(unittest.TestCase):
         )
         self.assertEqual([], [f for f in findings if f.category == "number"])
 
-    def test_ignores_four_digit_years(self):
+    # Round 3: this class previously held test_ignores_four_digit_years, which
+    # asserted that "Founded in 2024 and still going." produced no number
+    # finding. It was REPLACED, not deleted. The ignore it encoded
+    # (\b(?:19|20)\d{2}\b) exempted every integer from 1900 to 2099, so "Over
+    # 2000 people signed up." passed clean — a false negative on exactly the
+    # shape an invented marketing stat takes. A bare year is now treated as a
+    # claim; only genuine date FORMATS are ignored. The four tests below encode
+    # the replacement behaviour.
+
+    def test_bare_year_is_a_claim_and_is_flagged(self):
         findings = claim_lint.lint_text(
             "Founded in 2024 and still going.", self.register, self.config
         )
+        self.assertTrue(
+            [f for f in findings if f.category == "number"],
+            "a bare year is a factual assertion and belongs in the register",
+        )
+
+    def test_iso_date_is_ignored(self):
+        findings = claim_lint.lint_text(
+            "Released 2026-08-04.", self.register, self.config
+        )
         self.assertEqual([], [f for f in findings if f.category == "number"])
+
+    def test_written_date_is_ignored(self):
+        for draft in (
+            "Released January 2024 to the public.",
+            "Released 12 March 2026 to the public.",
+            "Released March 12, 2026 to the public.",
+        ):
+            with self.subTest(draft=draft):
+                findings = claim_lint.lint_text(draft, self.register, self.config)
+                self.assertEqual([], [f for f in findings if f.category == "number"])
+
+    def test_round_number_in_year_range_is_flagged(self):
+        for draft in ("Over 2000 people signed up.", "We processed 1999 orders."):
+            with self.subTest(draft=draft):
+                findings = claim_lint.lint_text(draft, self.register, self.config)
+                self.assertTrue(
+                    [f for f in findings if f.category == "number"],
+                    "a round number is not exempt for landing in the year range",
+                )
 
     def test_ignores_numbers_inside_fenced_code(self):
         text = "Here is code:\n\n```\nport = 8080\n```\n"
@@ -159,6 +196,136 @@ class TestClaimCategories(unittest.TestCase):
         self.assertIn("superlative", self._categories("We are #1 in the market."))
 
 
+class TestMagnitudeDetection(unittest.TestCase):
+    """Spelled-out quantities. A stat does not stop being a stat in words."""
+
+    def setUp(self):
+        self.config = claim_lint.DEFAULT_CONFIG
+        self.register = claim_lint.load_register(FIXTURES / "truth.md")
+
+    def _magnitudes(self, text):
+        return [
+            f
+            for f in claim_lint.lint_text(text, self.register, self.config)
+            if f.category == "magnitude"
+        ]
+
+    def test_flags_spelled_out_quantity(self):
+        self.assertTrue(self._magnitudes("We have forty thousand paying customers."))
+
+    def test_spelled_out_quantity_is_one_span(self):
+        findings = self._magnitudes("We have forty thousand paying customers.")
+        self.assertIn("forty thousand", [f.span for f in findings])
+
+    def test_flags_vague_magnitudes(self):
+        for draft in (
+            "Hundreds of teams rely on it.",
+            "It serves millions of requests.",
+            "Dozens of integrations ship with it.",
+            "Scores of reviewers agree.",
+            "A handful of teams tested it.",
+            "Countless hours saved.",
+            "Numerous customers renewed.",
+        ):
+            with self.subTest(draft=draft):
+                self.assertTrue(self._magnitudes(draft), draft)
+
+    def test_flags_number_word_quantifying_a_plural_noun(self):
+        self.assertTrue(self._magnitudes("We have forty paying customers."))
+        self.assertTrue(self._magnitudes("Twelve teams use it."))
+
+    def test_magnitude_is_error_severity(self):
+        findings = self._magnitudes("Hundreds of teams rely on it.")
+        self.assertEqual("error", findings[0].severity)
+
+    def test_magnitude_passes_when_sourced(self):
+        register = {"forty thousand paying customers as of the last billing export"}
+        findings = [
+            f
+            for f in claim_lint.lint_text(
+                "We have forty thousand paying customers as of the last billing export.",
+                register,
+                self.config,
+            )
+            if f.category == "magnitude"
+        ]
+        self.assertEqual([], findings)
+
+    def test_ordinary_prose_does_not_trip_magnitude(self):
+        """A noisy linter gets disabled, which is itself a false negative."""
+        for draft in (
+            "There is one place to look.",
+            "The two halves close into one circle.",
+            "Pick one and move on.",
+            "It does one thing well.",
+        ):
+            with self.subTest(draft=draft):
+                self.assertEqual([], self._magnitudes(draft), draft)
+
+    def test_one_and_two_still_flag_in_front_of_a_magnitude_word(self):
+        for draft in ("We serve one million users.", "Two thousand teams signed up."):
+            with self.subTest(draft=draft):
+                self.assertTrue(self._magnitudes(draft), draft)
+
+
+class TestTestimonialForms(unittest.TestCase):
+    def setUp(self):
+        self.config = claim_lint.DEFAULT_CONFIG
+        self.register = claim_lint.load_register(FIXTURES / "truth.md")
+
+    def _testimonials(self, text):
+        return [
+            f
+            for f in claim_lint.lint_text(text, self.register, self.config)
+            if f.category == "testimonial"
+        ]
+
+    def test_flags_markdown_blockquote(self):
+        text = "> This tool completely changed how our team works.\n"
+        self.assertTrue(self._testimonials(text))
+
+    def test_flags_blockquote_below_other_lines(self):
+        text = "Intro copy here.\n\n> This tool completely changed how our team works.\n"
+        findings = self._testimonials(text)
+        self.assertTrue(findings)
+        self.assertEqual(3, findings[0].line)
+
+    def test_short_blockquote_is_not_a_testimonial(self):
+        self.assertEqual([], self._testimonials("> Note: see below.\n"))
+
+    def test_flags_single_quoted_testimonial(self):
+        text = "'This tool completely changed how our team works.'"
+        self.assertTrue(self._testimonials(text))
+
+    def test_flags_curly_single_quoted_testimonial(self):
+        text = "‘This tool completely changed how our team works.’"
+        self.assertTrue(self._testimonials(text))
+
+    def test_apostrophes_do_not_form_a_testimonial(self):
+        text = "It doesn't matter which editor you're using when you're building.\n"
+        self.assertEqual([], self._testimonials(text))
+
+
+class TestScanSuffixes(unittest.TestCase):
+    def test_publish_formats_are_scanned(self):
+        for name in ("page.html", "page.htm", "post.mdx", "doc.rst", "note.txt"):
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / name
+                    path.write_text("We have 4200 users.\n", encoding="utf-8")
+                    code = claim_lint.main(
+                        [tmp, "--register", str(FIXTURES / "truth.md")]
+                    )
+                    self.assertEqual(1, code, name)
+
+    def test_json_is_not_scanned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "data.json"
+            path.write_text('{"users": 4200}\n', encoding="utf-8")
+            code = claim_lint.main([tmp, "--register", str(FIXTURES / "truth.md")])
+            self.assertEqual(0, code)
+
+
 class TestRegisterSchema(unittest.TestCase):
     def test_cleared_entry_without_source_suffix_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -213,9 +380,14 @@ class TestConfigGate(unittest.TestCase):
         self.assertIn("'severity' and 'ignore' only", err)
 
     def test_all_warn_severity_is_refused(self):
+        # 'magnitude' is listed here for the same reason as every other
+        # category: the assertion is that a map setting EVERY category to warn
+        # is refused, so a newly added category has to appear in the map for it
+        # to still be an all-warn map. The assertion itself is unchanged.
         code, err = self._run_with_config(
-            '{"severity": {"number": "warn", "superlative": "warn",'
-            ' "comparative": "warn", "testimonial": "warn", "absolute": "warn"}}'
+            '{"severity": {"number": "warn", "magnitude": "warn",'
+            ' "superlative": "warn", "comparative": "warn",'
+            ' "testimonial": "warn", "absolute": "warn"}}'
         )
         self.assertEqual(2, code)
         self.assertIn("never fail", err)
