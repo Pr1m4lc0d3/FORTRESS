@@ -69,6 +69,30 @@ class TestNumberDetection(unittest.TestCase):
             "a cleared '97 downloads all-time' must not source '97 million requests'",
         )
 
+    def test_number_at_end_of_line_is_not_sourced_by_bare_token(self):
+        register = {"pricing is 79 / 149 / 249 one-time — source: pricing page"}
+        findings = claim_lint.lint_text(
+            "Enterprise seats start at 79", register, self.config
+        )
+        self.assertTrue(
+            [f for f in findings if f.category == "number"],
+            "a span ending its line must not collapse to the bare token",
+        )
+
+    def test_number_at_end_of_line_falls_back_to_whole_line(self):
+        for draft in (
+            "Peak throughput, requests per second: 97",
+            "Our concurrent connection ceiling is 97",
+            "# 97",
+            "- 97",
+        ):
+            with self.subTest(draft=draft):
+                findings = claim_lint.lint_text(draft, self.register, self.config)
+                self.assertTrue(
+                    [f for f in findings if f.category == "number"],
+                    "'97 downloads all-time' must not source a trailing bare 97",
+                )
+
     def test_unclosed_fence_does_not_blank_rest_of_document(self):
         text = "Here is code:\n\n```\nport = 8080\n\nWe have 4200 active users.\n"
         with contextlib.redirect_stderr(io.StringIO()) as err:
@@ -182,7 +206,11 @@ class TestConfigGate(unittest.TestCase):
         code, err = self._run_with_config('{"ignore": [".*"]}')
         self.assertEqual(2, code)
         self.assertIn("catch-all ignore pattern", err)
-        self.assertIn("may not disable detection", err)
+        # Round 2: the old assertion here checked for "may not disable detection",
+        # a claim the code could not enforce (a broad ignore CAN disable a
+        # category). The sentence was removed as a false claim; this asserts the
+        # true replacement. The refusal itself is unchanged and still asserted.
+        self.assertIn("'severity' and 'ignore' only", err)
 
     def test_all_warn_severity_is_refused(self):
         code, err = self._run_with_config(
@@ -196,6 +224,28 @@ class TestConfigGate(unittest.TestCase):
         code, err = self._run_with_config('{"severity": {"number": "eror"}}')
         self.assertEqual(2, code)
         self.assertIn("invalid severity 'eror'", err)
+
+    def test_patterns_override_is_refused(self):
+        code, err = self._run_with_config('{"patterns": {"number": "$^"}}')
+        self.assertEqual(2, code)
+        self.assertIn("'patterns' is not user-overridable", err)
+
+    def test_patterns_override_is_refused_even_when_harmless(self):
+        code, err = self._run_with_config(
+            '{"patterns": {"number": "\\\\b\\\\d+\\\\b"}}'
+        )
+        self.assertEqual(2, code)
+        self.assertIn("'patterns' is not user-overridable", err)
+
+    def test_ignore_patterns_are_echoed_in_full(self):
+        code, err = self._run_with_config('{"ignore": ["\\\\b4471\\\\b"]}')
+        self.assertEqual(1, code, err)
+        self.assertIn("ignore patterns: 1: \\b4471\\b", err)
+
+    def test_no_ignore_patterns_is_echoed_explicitly(self):
+        code, err = self._run_with_config('{"ignore": []}')
+        self.assertEqual(1, code, err)
+        self.assertIn("ignore patterns: 0: (none)", err)
 
     def test_shipped_config_is_accepted(self):
         shipped = (ASSETS / "truth.config.json").read_text(encoding="utf-8")

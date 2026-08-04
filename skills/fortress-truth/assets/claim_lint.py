@@ -47,7 +47,7 @@ WINDOW_WORDS = 3
 
 
 class ConfigRefused(Exception):
-    """A config that would disable detection rather than narrow a false positive."""
+    """A config that oversteps what a config may set (see CONFIG_RULE)."""
 
 
 class Finding(NamedTuple):
@@ -160,12 +160,18 @@ def _span_window(line, col, span):
     the token alone lets "97 million requests a day" ride in on it. Only the span
     IN CONTEXT may vouch for itself.
 
-    If the offset does not line up, fall back to the whole line — the strict
-    check — never to the bare span.
+    THE INVARIANT: the window is only ever NARROWER THAN THE LINE and WIDER THAN
+    THE SPAN. When it cannot be both — the offset does not line up, or the span
+    is the last token on its line and no word follows it — the fallback is the
+    WHOLE LINE, the strict check. Never the bare span: a number ending a line, a
+    heading, or a list item is ordinary copy, and degrading to the token there
+    would reopen exactly the hole this function exists to close.
     """
     if col < 0 or line[col:col + len(span)] != span:
         return line
     following = line[col + len(span):].split()[:WINDOW_WORDS]
+    if not following:
+        return line
     return " ".join(span.split() + following)
 
 
@@ -201,17 +207,23 @@ def lint_text(text, register, config):
 SCAN_SUFFIXES = {".md", ".markdown", ".txt"}
 
 
-NARROW_NOT_DISABLE = (
-    "A config may narrow a false positive; it may not disable detection."
+CONFIG_RULE = (
+    "A config may set 'severity' and 'ignore' only. Detection patterns are fixed. "
+    "Ignore patterns are printed on every run, so a broad one is visible in the "
+    "output rather than hidden in a file."
 )
 
 
 def validate_config(config):
-    """Refuse a config that turns the gate off instead of narrowing it.
+    """Refuse the config shapes that turn the gate off outright.
 
-    The config file is loaded from the adopter's own repo. If it can silently
-    suppress every finding, the green all-clear it produces is worth nothing —
-    and nothing in the output would have said so.
+    Scope, stated honestly because the alternative is a false claim inside a tool
+    about false claims: this refuses a config that can never fail and a severity
+    map that is nonsense. It does NOT — and cannot — decide whether a given
+    ignore REGEX is too broad. `\\d+` silences the number category as surely as
+    `.*` silences everything. That is why every ignore pattern is echoed on every
+    run: the defence against a too-broad ignore is that you can SEE it, not that
+    the linter second-guessed it.
     """
     for pattern in config.get("ignore", []):
         try:
@@ -221,31 +233,39 @@ def validate_config(config):
         if pattern.strip() in CATCH_ALL_IGNORES or matches_empty:
             raise ConfigRefused(
                 f"catch-all ignore pattern {pattern!r} would suppress every "
-                f"finding. {NARROW_NOT_DISABLE}"
+                f"finding. {CONFIG_RULE}"
             )
     severity = config.get("severity", {})
     for category, value in severity.items():
         if value not in VALID_SEVERITIES:
             raise ConfigRefused(
                 f"invalid severity {value!r} for category {category!r}; expected "
-                f"one of {', '.join(VALID_SEVERITIES)}. {NARROW_NOT_DISABLE}"
+                f"one of {', '.join(VALID_SEVERITIES)}. {CONFIG_RULE}"
             )
     if severity and all(value == "warn" for value in severity.values()):
         raise ConfigRefused(
             "every category is set to 'warn', so the run can never fail. "
-            + NARROW_NOT_DISABLE
+            + CONFIG_RULE
         )
 
 
 def describe_config(config, source):
-    """One line naming what the gate is actually set to for this run."""
+    """One line naming what the gate is actually set to for this run.
+
+    The ignore patterns are printed IN FULL, not counted. An ignore regex can
+    silence an entire category — `\\d+` retires every number — and no validator
+    can judge that for you. Printing the patterns is the only honest defence:
+    the weakening is visible in the same output as the verdict it produced.
+    """
     categories = ", ".join(
         f"{name}={config['severity'].get(name, 'error')}"
         for name in sorted(config["patterns"])
     )
+    ignores = list(config.get("ignore", []))
+    shown = "; ".join(ignores) if ignores else "(none)"
     return (
         f"claim-lint: config: {source} | categories: {categories} "
-        f"| ignore patterns: {len(config.get('ignore', []))}"
+        f"| ignore patterns: {len(ignores)}: {shown}"
     )
 
 
@@ -253,7 +273,7 @@ def load_config(explicit=None):
     """Return (config, source-label).
 
     Loads an explicit path, else tools/monkeys/truth.config.json, else defaults.
-    Raises ConfigRefused for a config that would disable detection.
+    Raises ConfigRefused for a config that oversteps what a config may set.
     """
     candidates = []
     if explicit:
@@ -262,10 +282,16 @@ def load_config(explicit=None):
     for candidate in candidates:
         if candidate.exists():
             loaded = json.loads(candidate.read_text(encoding="utf-8"))
+            if "patterns" in loaded:
+                raise ConfigRefused(
+                    "'patterns' is not user-overridable: a config that could "
+                    "rewrite a detection pattern could switch a category off with "
+                    "a regex that never matches, such as '$^'. A config may set "
+                    "'severity' and 'ignore' only."
+                )
             merged = {**DEFAULT_CONFIG, **loaded}
-            for key in ("patterns", "severity"):
-                if key in loaded:
-                    merged[key] = {**DEFAULT_CONFIG[key], **loaded[key]}
+            if "severity" in loaded:
+                merged["severity"] = {**DEFAULT_CONFIG["severity"], **loaded["severity"]}
             validate_config(merged)
             return merged, str(candidate)
     validate_config(DEFAULT_CONFIG)
@@ -345,7 +371,9 @@ def main(argv=None):
     elif errors:
         print(
             f"\nclaim-lint: {errors} unsourced claim(s). "
-            "Source them in .monkeys/truth.md or remove them. There are no waivers.",
+            "Source them in .monkeys/truth.md or cut them. There is no per-finding "
+            "waiver flag; an 'ignore' pattern silences by shape, and every one in "
+            "effect is printed in the config line above.",
             file=sys.stderr,
         )
 

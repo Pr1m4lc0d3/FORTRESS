@@ -99,27 +99,39 @@ Exit codes:
 Every run prints one line to stderr naming the active config before it scans anything:
 
 ```
-claim-lint: config: tools/monkeys/truth.config.json | categories: absolute=warn, comparative=error, number=error, superlative=error, testimonial=error | ignore patterns: 2
+claim-lint: config: tools/monkeys/truth.config.json | categories: absolute=warn, comparative=error, number=error, superlative=error, testimonial=error | ignore patterns: 1: \b(?:19|20)\d{2}\b
 ```
 
-A gate that can be tuned has to say how it is currently tuned. Read that line before trusting a green run — an all-clear from a config you have not seen is not evidence of anything.
+Every ignore pattern in effect is printed **in full**, not counted. That is deliberate and it is load-bearing: an ignore regex can retire a whole category — `\d+` silences every number as surely as `.*` silences everything — and no validator can judge for you whether a given regex is too broad. Printing them is the defence, because the weakening then appears in the same output as the verdict it produced.
+
+A gate that can be tuned has to say how it is currently tuned. Read that line before trusting a green run — an all-clear from a config you have not read is not evidence of anything.
 
 `absolute` findings (`never`, `always`, `guaranteed`, `nobody`, `no one`, `everyone`, `zero`) are `warn` severity — they print but never fail the run. Every other category is `error` severity and fails the run when unsourced.
 
 Run it before any copy goes public: PR checks on marketing content, a pre-publish hook, or by hand before pasting into a post.
 
-## 6. No waivers
+## 6. No per-claim waivers — and exactly what the config can still do
 
-A size-budget guard can permit an expiring waiver — size debt is negotiable, a slightly-too-long file still works. A factual claim is not negotiable in the same way. An unsourced "fastest" doesn't get temporarily worse if you ship it; it's either true and sourced, or it's a lie with a deadline attached. There is no `--waive` flag, no expiry date, no "fix it next sprint" for a claim. **Sourced or blocked.** Cut the claim or source it — those are the only two moves.
+There is **no per-finding waiver.** No `--waive` flag, no expiry date, no "fix it next sprint" for a claim. A size-budget guard can permit an expiring waiver, because size debt is negotiable — a slightly-too-long file still works. A factual claim is not negotiable in the same way: an unsourced "fastest" doesn't get temporarily worse if you ship it; it's either true and sourced, or it's a lie with a deadline attached. **Sourced or cut.**
 
-`truth.config.json` is the one place that could quietly become a waiver, so the linter refuses the configs that would make it one. It **exits 2 without scanning** on:
+`truth.config.json` is the one place that could quietly become a waiver anyway, so be precise about what is enforced and what is not. **The code enforces exactly this, and nothing more:**
 
-- a catch-all `ignore` pattern (`.*`, `.+`, `^.*$`, `(.*)`, or anything else matching the empty string) — one line suppressing every finding is a waiver for the whole product;
-- a `severity` map where every category is `warn` — a run that cannot fail is not a gate;
-- an unrecognised severity value (`"eror"` for `"error"`) — a typo must not silently downgrade a category;
-- an `ignore` entry that is not a valid regex.
+| Enforced | How |
+|---|---|
+| Detection patterns cannot be edited | a `patterns` key in a config **exits 2**. Otherwise a regex that can never match (`$^`) would switch a category off while the output still said `number=error`. |
+| The run cannot be made incapable of failing | a `severity` map with every category `warn` **exits 2**. |
+| A severity typo cannot silently downgrade | any value other than `error`/`warn` (`"eror"`) **exits 2**. |
+| The obvious blanket ignores are rejected | `.*`, `.+`, `^.*$`, `(.*)`, and any pattern matching the empty string **exit 2**; so does an ignore that is not a valid regex. |
+| Every weakening is visible | all ignore patterns in effect are **printed in full on every run**. |
 
-A config may narrow a false positive. It may not disable detection. That is the difference between tuning a gate and turning it off, and the linter will not do the second one on your behalf.
+**Not enforced, stated plainly — this list is the honest half of the guarantee:**
+
+- An ignore pattern can narrow detection. That is what it is for, and a broad one narrows a category to nothing: `{"ignore": ["\\d+"]}` retires the whole `number` category and the run exits 0.
+- The blanket-ignore check catches the shapes people actually type, **not every possible equivalent.** `[\s\S]+` suppresses every category and is not rejected, because it does not match the empty string. Deciding in general whether a regex is "too broad" is not something a checker can do, and one that claimed to would be making a claim it cannot source — the exact move this skill exists to stop.
+
+So the check is a guard against the careless config, not a defence against a determined one. The real defence is the printed line: **an ignore you can see is an ignore someone can question.** Read it before you trust a green run.
+
+So the honest statement of the guarantee is: **patterns are fixed, severities are constrained, ignores are your responsibility and are printed in every run.** If a run is green, read the config line before you believe it. If someone widened an ignore, it is in the output — that is the protection, not a promise that nobody can widen one.
 
 ## 7. The honest caveat
 
@@ -129,7 +141,7 @@ A guard that implied otherwise — that a clean lint run means the copy is true 
 
 ## 8. Tuning
 
-False positives happen: a year in running prose, a build number, a SKU that looks like a bare number. Fix these by adding a pattern to `ignore` in `truth.config.json` — never by deleting or weakening a detection category (`number`, `superlative`, `comparative`, `absolute`, `testimonial`). Loosening a category to quiet noise reopens the exact hole this skill exists to close. Narrow the ignore list instead; keep it project-specific and as tight as the false positive requires.
+False positives happen: a year in running prose, a build number, a SKU that looks like a bare number. Fix these by adding a pattern to `ignore` in `truth.config.json`. The detection patterns themselves are not editable — a `patterns` key exits 2 — so the ignore list is the whole tuning surface, and **how tight you keep it is the whole of the discipline.** Write the narrowest pattern that clears the specific false positive: `\b4471\b`, not `\d+`. A lazy-wide ignore reopens the exact hole this skill exists to close, and the only thing standing between that and a false all-clear is that the pattern is printed on every run for someone to notice.
 
 **Ignore patterns are matched against the matched span, not the line.** The span is only the text the detector matched, so write the pattern for that, not for the surrounding sentence. Check what the span actually is before writing the pattern — the finding prints it:
 
