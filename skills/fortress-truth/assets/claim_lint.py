@@ -57,9 +57,22 @@ def strip_noise(text):
     return text
 
 
+def _contains_bounded(haystack, needle):
+    """True if needle appears in haystack not flanked by word characters."""
+    return re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", haystack) is not None
+
+
 def _is_sourced(span, register):
+    """Word-bounded containment.
+
+    Boundaries are mandatory: plain substring matching lets an unsourced "49"
+    hide inside a cleared "149" and pass silently, which is the exact failure
+    this linter exists to prevent.
+    """
     needle = span.strip().lower()
-    return any(needle in cleared for cleared in register)
+    if not needle:
+        return False
+    return any(_contains_bounded(cleared, needle) for cleared in register)
 
 
 def find_claims(text, config):

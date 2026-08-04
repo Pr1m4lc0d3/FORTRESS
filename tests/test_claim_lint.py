@@ -57,6 +57,14 @@ class TestNumberDetection(unittest.TestCase):
         self.assertEqual(1, len(findings))
         self.assertEqual(2, findings[0].line)
 
+    def test_number_does_not_match_inside_larger_number(self):
+        register = {"pricing is 79 / 149 / 249 one-time"}
+        findings = claim_lint.lint_text("It costs 49 dollars.", register, self.config)
+        self.assertTrue(
+            [f for f in findings if f.category == "number"],
+            "49 must not be considered sourced by 149 or 249",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
