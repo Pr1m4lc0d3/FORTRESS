@@ -1,0 +1,30 @@
+{
+  "name": "fortress",
+  "id": "fortress",
+  "owner": {
+    "name": "Pr1m4lc0d3"
+  },
+  "metadata": {
+    "description": "FORTRESS — build what can't be taken. The defensive half of THE MAVERICK'S MONKEYS.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "fortress",
+      "source": "./",
+      "description": "Guerrilla marketing for AI agents — hold it. A claim register with a real linter that fails on unsourced claims, motte-and-bailey asset sorting, account standing, and a human publish gate.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Pr1m4lc0d3"
+      },
+      "keywords": [
+        "marketing",
+        "guerrilla-marketing",
+        "claim-verification",
+        "hallucination-guard",
+        "brand-safety"
+      ],
+      "category": "workflow"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "fortress",
+  "description": "FORTRESS: build what can't be taken. The defensive half of guerrilla marketing for AI agents — a cleared/uncleared claim register with an enforcing linter, motte-and-bailey asset sorting, per-account standing, a human publish gate, and durable-vs-noise measurement.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Pr1m4lc0d3"
+  },
+  "license": "MIT",
+  "keywords": [
+    "marketing",
+    "guerrilla-marketing",
+    "claim-verification",
+    "fact-checking",
+    "hallucination-guard",
+    "content-marketing",
+    "brand-safety",
+    "bootstrapping"
+  ],
+  "skills": [
+    "./skills/fortress",
+    "./skills/fortress-truth",
+    "./skills/fortress-motte",
+    "./skills/fortress-bailey",
+    "./skills/fortress-standing",
+    "./skills/fortress-gate",
+    "./skills/fortress-measure"
+  ]
+}
