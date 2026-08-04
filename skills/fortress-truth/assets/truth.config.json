@@ -1,0 +1,14 @@
+{
+  "_comment": "Tune per project. Categories map to severity: 'error' fails the run, 'warn' reports only. Add project-specific ignore patterns (product version strings, SKUs) to 'ignore'.",
+  "severity": {
+    "number": "error",
+    "superlative": "error",
+    "comparative": "error",
+    "testimonial": "error",
+    "absolute": "warn"
+  },
+  "ignore": [
+    "\\b(?:19|20)\\d{2}\\b",
+    "\\bv\\d+(?:\\.\\d+)*\\b"
+  ]
+}

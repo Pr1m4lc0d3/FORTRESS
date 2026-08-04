@@ -5,7 +5,10 @@ The linter flags claim-shaped LANGUAGE. The register ARBITRATES.
 No script can know whether "fastest" is true — only whether it is sourced.
 """
 
+import argparse
+import json
 import re
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -121,3 +124,100 @@ def lint_text(text, register, config):
             continue
         out.append(finding)
     return out
+
+
+SCAN_SUFFIXES = {".md", ".markdown", ".txt"}
+
+
+def load_config(explicit=None):
+    """Load config from an explicit path, else tools/monkeys/truth.config.json, else defaults."""
+    candidates = []
+    if explicit:
+        candidates.append(Path(explicit))
+    candidates.append(Path("tools") / "monkeys" / "truth.config.json")
+    for candidate in candidates:
+        if candidate.exists():
+            loaded = json.loads(candidate.read_text(encoding="utf-8"))
+            merged = {**DEFAULT_CONFIG, **loaded}
+            for key in ("patterns", "severity"):
+                if key in loaded:
+                    merged[key] = {**DEFAULT_CONFIG[key], **loaded[key]}
+            return merged
+    return DEFAULT_CONFIG
+
+
+def lint_path(target, register, config):
+    """Lint a file or, for a directory, every markdown/text file beneath it."""
+    target = Path(target)
+    files = [target] if target.is_file() else sorted(
+        p for p in target.rglob("*") if p.suffix.lower() in SCAN_SUFFIXES
+    )
+    results = []
+    for path in files:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for finding in lint_text(text, register, config):
+            results.append((path, finding))
+    return results
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="claim-lint",
+        description="Flag claim-shaped language not sourced in the truth register.",
+    )
+    parser.add_argument("target", help="File or directory to scan")
+    parser.add_argument(
+        "--register",
+        default=".monkeys/truth.md",
+        help="Path to the truth register (default: .monkeys/truth.md)",
+    )
+    parser.add_argument("--config", default=None, help="Path to truth.config.json")
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="Print findings without failing (always exits 0)",
+    )
+    args = parser.parse_args(argv)
+
+    target = Path(args.target)
+    if not target.exists():
+        print(f"claim-lint: target not found: {target}", file=sys.stderr)
+        return 2
+    register_path = Path(args.register)
+    if not register_path.exists():
+        print(
+            f"claim-lint: register not found: {register_path}\n"
+            "Run the fortress kickoff to generate .monkeys/truth.md",
+            file=sys.stderr,
+        )
+        return 2
+
+    register = load_register(register_path)
+    config = load_config(args.config)
+    results = lint_path(target, register, config)
+
+    errors = 0
+    for path, finding in results:
+        if finding.severity == "error":
+            errors += 1
+        print(
+            f"{path}:{finding.line}: {finding.severity}: "
+            f"unsourced {finding.category}: {finding.span!r}"
+        )
+
+    if not results:
+        print("claim-lint: no unsourced claims found.")
+    elif errors:
+        print(
+            f"\nclaim-lint: {errors} unsourced claim(s). "
+            "Source them in .monkeys/truth.md or remove them. There are no waivers.",
+            file=sys.stderr,
+        )
+
+    if args.report:
+        return 0
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

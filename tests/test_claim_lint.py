@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -113,6 +114,53 @@ class TestClaimCategories(unittest.TestCase):
 
     def test_flags_hash_one_superlative(self):
         self.assertIn("superlative", self._categories("We are #1 in the market."))
+
+
+class TestCli(unittest.TestCase):
+    def _write(self, directory, name, body):
+        path = Path(directory) / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_exit_zero_when_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft = self._write(tmp, "draft.md", "We have 97 downloads all-time.\n")
+            code = claim_lint.main([str(draft), "--register", str(FIXTURES / "truth.md")])
+            self.assertEqual(0, code)
+
+    def test_exit_one_on_error_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft = self._write(tmp, "draft.md", "We have 4200 users.\n")
+            code = claim_lint.main([str(draft), "--register", str(FIXTURES / "truth.md")])
+            self.assertEqual(1, code)
+
+    def test_report_mode_exits_zero_despite_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft = self._write(tmp, "draft.md", "We have 4200 users.\n")
+            code = claim_lint.main(
+                [str(draft), "--register", str(FIXTURES / "truth.md"), "--report"]
+            )
+            self.assertEqual(0, code)
+
+    def test_warn_only_findings_exit_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft = self._write(tmp, "draft.md", "It never breaks.\n")
+            code = claim_lint.main([str(draft), "--register", str(FIXTURES / "truth.md")])
+            self.assertEqual(0, code)
+
+    def test_missing_register_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft = self._write(tmp, "draft.md", "Anything.\n")
+            code = claim_lint.main([str(draft), "--register", str(Path(tmp) / "nope.md")])
+            self.assertEqual(2, code)
+
+    def test_directory_target_scans_markdown_recursively(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, "posts/a.md", "Clean: 97 downloads all-time.\n")
+            self._write(tmp, "posts/b.md", "We have 4200 users.\n")
+            code = claim_lint.main([tmp, "--register", str(FIXTURES / "truth.md")])
+            self.assertEqual(1, code)
 
 
 if __name__ == "__main__":
