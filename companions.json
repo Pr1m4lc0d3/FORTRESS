@@ -1,4 +1,13 @@
 {
   "_comment": "Optional capability providers. Every entry MUST be verified publicly installable before shipping. required is always false.",
-  "companions": []
+  "companions": [
+    {
+      "capability": "browser automation",
+      "unlocks": "fortress-gate can drive the copy-paste step of a human-approved send instead of the adopter pasting it by hand; the human approval and the checklist in fortress-gate still run for every send",
+      "provider": "Playwright MCP (microsoft/playwright-mcp, npm package @playwright/mcp, Apache-2.0)",
+      "install": "claude mcp add playwright npx @playwright/mcp@latest",
+      "cost": "free",
+      "required": false
+    }
+  ]
 }
