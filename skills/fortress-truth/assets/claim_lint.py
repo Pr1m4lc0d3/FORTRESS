@@ -14,7 +14,8 @@ DEFAULT_CONFIG = {
         "number": r"\b\d[\d,]*(?:\.\d+)?%?\b",
         "superlative": (
             r"\b(?:the\s+)?(?:best|worst|fastest|slowest|cheapest|only|first|"
-            r"largest|smallest|most|least|leading|#1|number\s+one)\b"
+            r"largest|smallest|most|least|leading|number\s+one)\b"
+            r"|(?<!\w)#1(?!\w)"
         ),
         "comparative": (
             r"\b(?:better|faster|cheaper|stronger|safer)\s+than\b"
@@ -77,19 +78,22 @@ def _contains_bounded(haystack, needle):
 
 
 def _is_sourced(text, register):
-    """Word-bounded containment in either direction.
+    """Word-bounded containment: the claim text must appear inside a cleared entry.
 
-    Boundaries are mandatory: plain substring matching lets an unsourced "49"
-    hide inside a cleared "149" and pass silently, which is the exact failure
-    this linter exists to prevent.
+    ONE DIRECTION ONLY, and both halves of that are load-bearing:
+
+    - Boundaries are mandatory. Plain substring matching lets an unsourced "49"
+      hide inside a cleared "149".
+    - The reverse direction is forbidden. If a cleared entry were allowed to
+      match inside the claim text, a short cleared fragment would vouch for a
+      long line carrying other unsourced claims.
+
+    Both are the same false negative.
     """
     needle = text.strip().lower().rstrip(".")
     if not needle:
         return False
-    for cleared in register:
-        if _contains_bounded(cleared, needle) or _contains_bounded(needle, cleared):
-            return True
-    return False
+    return any(_contains_bounded(cleared, needle) for cleared in register)
 
 
 def find_claims(text, config):

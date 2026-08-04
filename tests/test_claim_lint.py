@@ -99,6 +99,21 @@ class TestClaimCategories(unittest.TestCase):
         )
         self.assertEqual([], [f for f in findings if f.category == "superlative"])
 
+    def test_sourced_fragment_does_not_vouch_for_rest_of_line(self):
+        register = {"we are the fastest option"}
+        findings = claim_lint.lint_text(
+            "We are the fastest option, and it never loses your data.",
+            register,
+            self.config,
+        )
+        self.assertTrue(
+            [f for f in findings if f.category == "absolute"],
+            "a cleared fragment must not suppress an unsourced claim on the same line",
+        )
+
+    def test_flags_hash_one_superlative(self):
+        self.assertIn("superlative", self._categories("We are #1 in the market."))
+
 
 if __name__ == "__main__":
     unittest.main()
