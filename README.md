@@ -94,7 +94,7 @@ and the other is the sentence you're never allowed to write.
 ## Install
 
 ```
-/plugin marketplace add ./FORTRESS
+/plugin marketplace add Pr1m4lc0d3/FORTRESS
 /plugin install fortress@fortress
 ```
 
