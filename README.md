@@ -110,6 +110,28 @@ Glob/Grep, Bash — and `claim_lint.py` is Python 3 standard library only, no de
 `fortress-gate` execute the copy-paste step of an already-human-approved send); every FORTRESS
 skill produces its full deliverable without it.
 
+## Arriving with a Sell-Kit
+
+Optional, and it changes nothing for an adopter who doesn't have one. **Idea Forge Pro**
+(ideaforgepro.com) is a separate, free, bring-your-own-API-key tool that runs an idea through seven
+gates and exports a *Sell-Kit*. Its fields map closely onto the `.monkeys/` pack, so a founder who
+arrives with one isn't re-interviewed for what they already wrote down:
+
+```
+An idea → Idea Forge Pro (free, your own key) → a Sell-Kit
+        → FORTRESS kickoff reads it → your .monkeys/ pack
+        → fortress-truth decides what may be claimed
+        → fortress-gate → a human sends it
+```
+
+**Reading a Sell-Kit is not clearance.** Idea Forge Pro deliberately refuses to say "clear to
+build" — craft, demand, and a critic conceding are three different axes there — and importing a kit
+into this pack is not permission to market either. A kit changes where the interview starts, not
+what may be said: a field enters `truth.md`'s **Cleared** section only if its own evidence grade
+earns it, and anything a model wrote lands in **Uncleared**, which is exactly where `claim_lint.py`
+keeps it out of copy. FORTRESS runs with no Sell-Kit, no Idea Forge Pro, and no internet beyond the
+built-in search and fetch.
+
 ## Honest proof — read this before trusting anything above
 
 `scars.md` in this repository is real. Every entry in it documents a concrete incident with

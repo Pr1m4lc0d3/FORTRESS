@@ -67,7 +67,45 @@ A bare `skills/…` path is neither: it resolves against the adopter's working d
 
 Steps, in order:
 
-1. **Interview the adopter.** Ask, one question at a time:
+1. **Ask whether there is a Sell-Kit, and read it if there is.** Ask one question and wait for the answer: *"Do you have a Sell-Kit from Idea Forge Pro?"*
+
+   If the answer is no, skip the rest of this step. Nothing else in kickoff changes — the interview below is the whole of it, exactly as it was before this step existed. **A Sell-Kit is never required.** Idea Forge Pro (ideaforgepro.com) is a separate, free, bring-your-own-API-key tool that runs a startup idea through seven gates and exports a Sell-Kit: `<name>-sell-kit.md`, plus a `<name>-forge.json` holding the same data typed. It is optional in exactly the way section 5's companions are optional — FORTRESS runs with no Sell-Kit, no Idea Forge Pro, and no internet beyond the built-in WebSearch and WebFetch.
+
+   If the answer is yes, ask for the path. Where both files exist, read the **`-forge.json`** — it is typed, so nothing is lost to formatting — and fall back to the `-sell-kit.md` where that is the only one. A kit may carry any subset of its fields; an absent field is absent.
+
+   Before a single field moves anywhere, the rule that governs the whole import:
+
+   > **A Sell-Kit field never enters `## Cleared` unless its evidence grade earns it.**
+
+   A Sell-Kit is largely written by a model from what a founder typed into it. Importing that prose into a truth register as fact would inject model-written claims into the exact place that exists to keep them out — and `claim_lint.py` would then pass them forever, because a line that *looks* sourced is all a script can check. **The default for anything without a grade is Uncleared.**
+
+   The kit's claim register carries one line per claim with an evidence grade: **A** attested · **B** observed · **C** public principle · **D** analogy · **E** founder assertion · **F** generated. Its own rule is that anything generated is F and **cannot be raised** — not by argument, not by the founder wanting it, and not by this import.
+
+   Map it exactly. Nothing here creates a file; hold the mapped lines and write them when steps 4, 5 and 6 write the files themselves.
+
+   | From the kit | Goes to | Carrying |
+   |---|---|---|
+   | `What is known` | `truth.md` `## Cleared` | the source the kit names, as ` — source: <exact source>` |
+   | `What is hypothesized` | `truth.md` `## Uncleared` | ` — reason: hypothesis, not established` |
+   | claim register, graded **A/B/C/D** | `truth.md` `## Cleared` | ` — source: <the source the register names>` |
+   | claim register, graded **E** | `truth.md` `## Uncleared` | ` — reason: founder assertion, no source` |
+   | claim register, graded **F** | `truth.md` `## Uncleared` | ` — reason: model-written, cannot be raised` |
+   | `Channel` | `bailey.md` `## Active` | `standing: cold` — `links allowed: no` |
+   | `Value artifact` | `motte.md` `## Wanted` | why it matters, in the kit's own words |
+   | **every other field** | `truth.md` `## Uncleared` | ` — reason: from a Sell-Kit, ungraded` |
+
+   Four things about that table are the whole of it, and each one is where the import goes wrong if it is softened:
+
+   - **`What is known` is the only field that arrives already eligible for Cleared**, because that is its own definition inside the kit: facts directly supplied by the founder or independently supported, nothing generated. It still needs a ` — source:` suffix like every other Cleared line. Where the kit doesn't name one, **ask the adopter**; if they can't name one either, it goes to **Uncleared** instead — ` — reason: no source named`. A Cleared bullet without that suffix sources nothing and the linter ignores it.
+   - **Every other field goes to Uncleared unless the claim register grades it A–D.** `Buyer`, `Problem`, `Why now`, `Offer`, `Price`, `Intent signal`, `Value artifact`, and all eight pre-build-test fields — all of it. **A price a model proposed is not a fact about the world.**
+   - **The `Channel` entry is a candidate, not a channel in use.** A channel named in a kit has no account behind it yet, which is why it lands `standing: cold` with `links allowed: no` — the two fields `fortress-standing` reads — and `account: none yet` with `joined: n/a`, because inventing a handle or a date would fabricate the account itself. If the adopter says they already have an account there, that is the interview's answer, not the kit's.
+   - **The `Value artifact` goes to `## Wanted`, never `## Held`.** It is a thing to build. Writing it under **Held** would claim an asset the adopter does not have.
+
+   Ignore the kit's builder spec entirely — `Acceptance criteria`, `Must nail`, `Out of scope (v1)`. Those describe what to build, not what may be claimed, and nothing in FORTRESS reads them.
+
+   **Never fabricate a field the kit lacks.** An absent field is absent: ask for it in the interview, or leave it out. Then run the interview below asking only for what the kit did not answer, and confirming — not re-asking — what it did.
+
+2. **Interview the adopter.** Ask, one question at a time:
    - Product name and a one-line description.
    - The canonical source — the URL or document you'd point a fact-checker to for current numbers, pricing, or features.
    - Three to six facts you want to be able to state publicly, and where each one comes from.
@@ -75,11 +113,11 @@ Steps, in order:
    - Channels you're already using or plan to use, and any you've deliberately ruled out, with why.
    - Any past incidents — a ban, a retraction, a dispute — worth remembering.
 
-2. **Fetch the canonical source.** Use WebFetch for a URL, Read for a local document. Cross-check every fact the adopter gave you against what's actually there. A fact that matches goes to Cleared. A fact that doesn't match, or that can't be verified this way, goes to Uncleared with the reason — never invent the missing verification to make the fact clearable.
+3. **Fetch the canonical source.** Use WebFetch for a URL, Read for a local document. Cross-check every fact the adopter gave you against what's actually there. A fact that matches goes to Cleared. A fact that doesn't match, or that can't be verified this way, goes to Uncleared with the reason — never invent the missing verification to make the fact clearable.
 
-3. **Write `.monkeys/truth.md`** (adopter's repo root) from `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/truth.template.md`. The template ships placeholders only — no example numbers to leave behind by accident, and any bullet you write under **Cleared** without a ` — source:` suffix is ignored by the linter. Fill **Canonical source** with what the adopter gave. Move each verified fact into **Cleared**, each line ending ` — source: <exact source>`. Move everything else into **Uncleared**, each line ending ` — reason: <why>`.
+4. **Write `.monkeys/truth.md`** (adopter's repo root) from `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/truth.template.md`. The template ships placeholders only — no example numbers to leave behind by accident, and any bullet you write under **Cleared** without a ` — source:` suffix is ignored by the linter. Fill **Canonical source** with what the adopter gave. Move each verified fact into **Cleared**, each line ending ` — source: <exact source>`. Move everything else into **Uncleared**, each line ending ` — reason: <why>`.
 
-4. **Write `.monkeys/motte.md`** — one bullet per asset the adopter confirmed they own outright, in exactly this shape. No invented entries. An empty **Held** section is an honest motte, not a placeholder to come back and fill in.
+5. **Write `.monkeys/motte.md`** — one bullet per asset the adopter confirmed they own outright, in exactly this shape. No invented entries. An empty **Held** section is an honest motte, not a placeholder to come back and fill in.
 
    ```markdown
    # Motte — what cannot be confiscated
@@ -91,7 +129,7 @@ Steps, in order:
    - <asset not yet built> — why it matters
    ```
 
-5. **Write `.monkeys/bailey.md`** — channels in use or planned under **Active**, channels ruled out under **Excluded**, in exactly this shape. An exclusion recorded without a reason gets re-proposed every session, forever — that's why **Excluded** entries require one.
+6. **Write `.monkeys/bailey.md`** — channels in use or planned under **Active**, channels ruled out under **Excluded**, in exactly this shape. An exclusion recorded without a reason gets re-proposed every session, forever — that's why **Excluded** entries require one.
 
    ```markdown
    # Bailey — rented ground
@@ -105,15 +143,15 @@ Steps, in order:
 
    These two shapes are a contract, not a suggestion: `fortress-motte` reads **Held**/**Wanted**, `fortress-bailey` reads **Active**/**Excluded**, and `fortress-standing` reads the `standing:` and `links allowed:` fields on each **Active** line — that's why those fields live on the channel line itself rather than in a separate file. A skill that changes either shape breaks its siblings.
 
-6. **Write `.monkeys/scars.md`** — the adopter's own incident log, started empty: a three-column table (Incident / Damage / Rule) plus one sentence noting it gets filled in after something actually happens, never guessed in advance. This is the adopter's own log, separate from FORTRESS's own `scars.md`, which documents this plugin's history, not theirs.
+7. **Write `.monkeys/scars.md`** — the adopter's own incident log, started empty: a three-column table (Incident / Damage / Rule) plus one sentence noting it gets filled in after something actually happens, never guessed in advance. This is the adopter's own log, separate from FORTRESS's own `scars.md`, which documents this plugin's history, not theirs.
 
-7. **Copy the linter.** Read `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/claim_lint.py` and `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/truth.config.json`, then Write each verbatim into the adopter's repo at `tools/monkeys/claim_lint.py` and `tools/monkeys/truth.config.json` (both relative to the adopter's repo root). Read+Write, not a shell copy — this step works even where Bash is unavailable. Write the config **verbatim**: the linter refuses a `patterns` key, an all-`warn` severity map, an unrecognised severity value and a catch-all `ignore` (exit 2), and it prints every active `ignore` pattern on each run — so a hand-edit either fails loudly or shows up in the output.
+8. **Copy the linter.** Read `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/claim_lint.py` and `${CLAUDE_PLUGIN_ROOT}/skills/fortress-truth/assets/truth.config.json`, then Write each verbatim into the adopter's repo at `tools/monkeys/claim_lint.py` and `tools/monkeys/truth.config.json` (both relative to the adopter's repo root). Read+Write, not a shell copy — this step works even where Bash is unavailable. Write the config **verbatim**: the linter refuses a `patterns` key, an all-`warn` severity map, an unrecognised severity value and a catch-all `ignore` (exit 2), and it prints every active `ignore` pattern on each run — so a hand-edit either fails loudly or shows up in the output.
 
-8. **Add the contract line.** Append to `CLAUDE.md` if it exists, else `AGENTS.md` if that exists, else create `CLAUDE.md`:
+9. **Add the contract line.** Append to `CLAUDE.md` if it exists, else `AGENTS.md` if that exists, else create `CLAUDE.md`:
 
    > Before publishing anything, run `python tools/monkeys/claim_lint.py <draft>`; unsourced claims do not ship.
 
-9. **Report back** what was written, and state plainly that every Cleared fact traces to something the adopter said and something that was independently fetched — nothing was invented to fill space.
+10. **Report back** what was written, and state plainly that every Cleared fact traces to something the adopter said and something that was independently fetched — nothing was invented to fill space. Where a Sell-Kit was imported, report it in the same breath: what was imported, what was placed under **Uncleared** and the reason for each, and what still needs verification before it can move.
 
 ## 5. Capability report
 
