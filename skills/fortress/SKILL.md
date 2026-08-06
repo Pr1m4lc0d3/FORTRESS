@@ -91,7 +91,7 @@ Steps, in order:
    | claim register, graded **E** | `truth.md` `## Uncleared` | ` — reason: founder assertion, no source` |
    | claim register, graded **F** | `truth.md` `## Uncleared` | ` — reason: model-written, cannot be raised` |
    | `Channel` | `bailey.md` `## Active` | `standing: cold` — `links allowed: no` |
-   | `Value artifact` | `motte.md` `## Wanted` | why it matters, in the kit's own words |
+   | `Value artifact` | `motte.md` `## Wanted` | `why:` — what it would let you do, in the kit's own words |
    | **every other field** | `truth.md` `## Uncleared` | ` — reason: from a Sell-Kit, ungraded` |
 
    Four things about that table are the whole of it, and each one is where the import goes wrong if it is softened:
@@ -126,7 +126,7 @@ Steps, in order:
    - <asset> — control: <full|partial> — grows by: <what moves it>
 
    ## Wanted
-   - <asset not yet built> — why it matters
+   - <asset not yet built> — why: <what it would let you do>
    ```
 
 6. **Write `.monkeys/bailey.md`** — channels in use or planned under **Active**, channels ruled out under **Excluded**, in exactly this shape. An exclusion recorded without a reason gets re-proposed every session, forever — that's why **Excluded** entries require one.

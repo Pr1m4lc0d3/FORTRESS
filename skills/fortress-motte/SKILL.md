@@ -52,7 +52,7 @@ The register lives at `.monkeys/motte.md`, written by FORTRESS kickoff:
 - <asset> — control: <full|partial> — grows by: <what moves it>
 
 ## Wanted
-- <asset not yet built> — why it matters
+- <asset not yet built> — why: <what it would let you do>
 ```
 
 Read **Held** to see what's already owned and how it grows — the `grows by` field is the lever, not decoration; it's the answer to "what should I actually go do." Read **Wanted** to see what's missing and why it matters before proposing new build work — don't invent a Wanted entry that isn't grounded in something the adopter actually said mattered.
