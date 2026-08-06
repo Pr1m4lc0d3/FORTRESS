@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -485,6 +486,79 @@ class TestCli(unittest.TestCase):
             self._write(tmp, "posts/b.md", "We have 4200 users.\n")
             code = claim_lint.main([tmp, "--register", str(FIXTURES / "truth.md")])
             self.assertEqual(1, code)
+
+
+class TestSharedLintVectors(unittest.TestCase):
+    """One spec file, answered by both implementations of "is this claim sourced?".
+
+    console/src/lint.js is a second implementation of this linter, for the
+    browser. Two implementations of one question is the duplication that drifts
+    apart silently — and the drift shows up as a FALSE NEGATIVE, a claim one
+    side passes as sourced when it is not. Twelve of those have already been
+    found here, every one of them by somebody using or adversarially reading the
+    tool rather than by the suite that was green at the time.
+
+    console/tests/lint-vectors.json is the shared specification. The JS test
+    runner asserts against the same file, so a vector added for a bug found on
+    either side becomes a regression test for both. When the two disagree, one
+    of them is wrong: find out which. Never edit a vector to make them agree.
+    """
+
+    VECTORS = (
+        Path(__file__).resolve().parent.parent.parent
+        / "console" / "tests" / "lint-vectors.json"
+    )
+
+    @staticmethod
+    def _verdict(rows, with_lines):
+        """Both runners reduce a result to this shape, so they compare like for like."""
+        return sorted(
+            json.dumps(
+                [row["category"], row["span"], row["severity"],
+                 row.get("line") if with_lines else None],
+                ensure_ascii=False, separators=(",", ":"),
+            )
+            for row in rows
+        )
+
+    def test_python_agrees_with_every_shared_vector(self):
+        self.assertTrue(
+            self.VECTORS.exists(),
+            f"the shared vector file is missing: {self.VECTORS}. It is the only thing "
+            "holding claim_lint.py and console/src/lint.js to the same answer; a run "
+            "without it proves nothing.",
+        )
+        vectors = json.loads(self.VECTORS.read_text(encoding="utf-8"))
+        self.assertTrue(vectors, "the shared vector file is empty")
+
+        for vector in vectors:
+            with self.subTest(vector=vector["name"]):
+                with tempfile.TemporaryDirectory() as tmp:
+                    config = claim_lint.DEFAULT_CONFIG
+                    if "config" in vector:
+                        path = Path(tmp) / "truth.config.json"
+                        path.write_text(json.dumps(vector["config"]), encoding="utf-8")
+                        if vector.get("refused"):
+                            with self.assertRaises(claim_lint.ConfigRefused) as caught:
+                                claim_lint.load_config(str(path))
+                            self.assertIn(vector["refused"], str(caught.exception))
+                            continue
+                        config, _ = claim_lint.load_config(str(path))
+
+                    with_lines = any("line" in item for item in vector["expect"])
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        findings = claim_lint.lint_text(
+                            vector["text"], set(vector["register"]), config
+                        )
+                    actual = self._verdict(
+                        [f._asdict() for f in findings], with_lines
+                    )
+                    self.assertEqual(
+                        self._verdict(vector["expect"], with_lines), actual,
+                        f"{vector['name']}: claim_lint.py disagrees with the shared "
+                        "vector. Either this implementation or console/src/lint.js is "
+                        "wrong — do not change the vector to settle it.",
+                    )
 
 
 if __name__ == "__main__":
