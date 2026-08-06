@@ -303,6 +303,98 @@ CONFIG_RULE = (
 )
 
 
+PORTABLE_GROUP_PREFIXES = ("(?:", "(?=", "(?!", "(?<=", "(?<!", "(?P<")
+
+NONPORTABLE_RULE = (
+    "An ignore pattern must mean the same thing to every implementation of this "
+    "linter. console/src/lint.js answers the same question in a browser, and a "
+    "pattern the two regex engines read differently would blank a different region "
+    "depending on which one ran — two answers to one question, which is the exact "
+    "failure this tool exists to prevent."
+)
+
+CLASS_ESCAPE_REFUSAL = (
+    "\\W, \\D, \\S and \\B inside a character class are not portable between Python "
+    "and JavaScript: Python's class escapes are Unicode-aware, JavaScript's are "
+    "ASCII-only, and JavaScript cannot negate a class inside a class at all. "
+    + NONPORTABLE_RULE
+    + " Write the characters out explicitly instead — [A-Za-z_] rather than [^\\W\\d]."
+)
+
+
+def assert_portable_ignore(pattern):
+    """Refuse an ignore pattern that Python and JavaScript do not read alike.
+
+    This is the twin of pythonRegexToJs() in console/src/lint.js, and it exists
+    because the two implementations must accept the SAME configs. A config the
+    CLI takes and the console rejects means the two are not interchangeable, and
+    'interchangeable' is the whole claim the shared vector file is making.
+
+    The class-escape case is the dangerous one and the reason this function is
+    not merely a nicety: `[^\\W\\d]` COMPILES in both engines and MEANS something
+    different in each, so it is the only construct here that fails silently
+    rather than loudly. The rest are refused so the accepted set matches.
+    """
+    in_class = False
+    opened_at = -1
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "\\":
+            following = pattern[index + 1] if index + 1 < len(pattern) else ""
+            if in_class and following in ("W", "D", "S", "B"):
+                raise ConfigRefused(
+                    f"ignore pattern {pattern!r} uses \\{following} inside a "
+                    f"character class. {CLASS_ESCAPE_REFUSAL}"
+                )
+            if following in ("p", "P"):
+                raise ConfigRefused(
+                    f"ignore pattern {pattern!r} uses the Unicode property escape "
+                    f"\\{following}{{...}}, which is not portable between Python "
+                    f"and JavaScript: JavaScript compiles it and Python's re module "
+                    f"cannot. {NONPORTABLE_RULE} Write the characters out explicitly "
+                    "instead."
+                )
+            index += 2
+            continue
+        if in_class:
+            # Python reads a ']' in first position as a literal member.
+            first = index == opened_at + 1 or (
+                index == opened_at + 2 and pattern[opened_at + 1] == "^"
+            )
+            if char == "]" and not first:
+                in_class = False
+            index += 1
+            continue
+        if char == "[":
+            in_class = True
+            opened_at = index
+            index += 1
+            continue
+        if pattern.startswith("(?", index) and not pattern.startswith(
+            PORTABLE_GROUP_PREFIXES, index
+        ):
+            raise ConfigRefused(
+                f"ignore pattern {pattern!r} uses the group construct "
+                f"{pattern[index:index + 4]!r}, which is not portable between "
+                f"Python and JavaScript. {NONPORTABLE_RULE} Use (?:...) or one of "
+                "the lookaround forms both engines share."
+            )
+        if char in "*+?}" and pattern[index + 1:index + 2] == "+":
+            raise ConfigRefused(
+                f"ignore pattern {pattern!r} uses the possessive quantifier "
+                f"{pattern[index:index + 2]!r}, which is not portable between "
+                f"Python and JavaScript: JavaScript has no possessive quantifiers "
+                f"and refuses to compile it. {NONPORTABLE_RULE} Use a plain or lazy "
+                "quantifier instead."
+            )
+        index += 1
+    if in_class:
+        raise ConfigRefused(
+            f"unterminated character class in ignore pattern {pattern!r}"
+        )
+
+
 def validate_config(config):
     """Refuse the config shapes that turn the gate off outright.
 
@@ -315,6 +407,7 @@ def validate_config(config):
     the linter second-guessed it.
     """
     for pattern in config.get("ignore", []):
+        assert_portable_ignore(pattern)
         try:
             matches_empty = re.compile(pattern).fullmatch("") is not None
         except re.error as exc:

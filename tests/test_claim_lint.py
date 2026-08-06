@@ -420,6 +420,42 @@ class TestConfigGate(unittest.TestCase):
         self.assertEqual(1, code, err)
         self.assertIn("ignore patterns: 0: (none)", err)
 
+    def test_non_portable_ignore_patterns_are_refused(self):
+        """An ignore pattern must mean the same thing to both implementations.
+
+        console/src/lint.js refuses each of these. If claim_lint.py accepted
+        them, a truth.config.json would pass on the command line and be rejected
+        in the console — or worse, in the [^\\W\\d] case, be ACCEPTED by both and
+        blank a different region in each. That one is the only silent member of
+        the set, and the reason the rule exists rather than being a nicety.
+        """
+        cases = {
+            r"[^\W\d]+42": "inside a character class are not portable",
+            r"[\W]4200": "inside a character class are not portable",
+            r"(?i:widget)42": "group construct",
+            r"(?>a+)42": "group construct",
+            r"\p{L}+42": "Unicode property escape",
+            r"a*+42": "possessive quantifier",
+        }
+        for pattern, expected in cases.items():
+            with self.subTest(pattern=pattern):
+                code, err = self._run_with_config(json.dumps({"ignore": [pattern]}))
+                self.assertEqual(2, code, err)
+                self.assertIn(expected, err)
+                # The shared rule, stated the same way on both sides.
+                self.assertIn(
+                    "two answers to one question, which is the exact failure this "
+                    "tool exists to prevent", err,
+                )
+
+    def test_portable_ignore_patterns_are_still_accepted(self):
+        """The rule refuses non-portable constructs, not ordinary ignores."""
+        for pattern in (r"\b4471\b", r"(?:issue|bug)\s+#\d+", r"[]x]4200",
+                        r"(?P<tag>WID)-\d+", r"north.star", r"[0-9]{3}-[0-9]{4}"):
+            with self.subTest(pattern=pattern):
+                code, err = self._run_with_config(json.dumps({"ignore": [pattern]}))
+                self.assertEqual(1, code, err)
+
     def test_shipped_config_is_accepted(self):
         shipped = (ASSETS / "truth.config.json").read_text(encoding="utf-8")
         code, err = self._run_with_config(shipped)
