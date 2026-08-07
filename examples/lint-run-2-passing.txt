@@ -1,0 +1,4 @@
+claim-lint: config: tools\monkeys\truth.config.json | categories: absolute=warn, comparative=error, magnitude=error, number=error, superlative=error, testimonial=error | ignore patterns: 1: \b\d{4}-\d{2}-\d{2}\b|\b(?:\d{1,2}\s+)?(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec)\.?\s+(?:\d{1,2},?\s+)?\d{4}\b
+claim-lint: no unsourced claims found.
+
+EXIT CODE: 0

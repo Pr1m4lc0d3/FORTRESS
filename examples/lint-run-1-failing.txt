@@ -1,0 +1,6 @@
+claim-lint: config: tools\monkeys\truth.config.json | categories: absolute=warn, comparative=error, magnitude=error, number=error, superlative=error, testimonial=error | ignore patterns: 1: \b\d{4}-\d{2}-\d{2}\b|\b(?:\d{1,2}\s+)?(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec)\.?\s+(?:\d{1,2},?\s+)?\d{4}\b
+
+claim-lint: 1 unsourced claim(s). Source them in .monkeys/truth.md or cut them. There is no per-finding waiver flag; an 'ignore' pattern silences by shape, and every one in effect is printed in the config line above.
+draft-social-post.md:3: error: unsourced superlative: 'the best'
+
+EXIT CODE: 1
