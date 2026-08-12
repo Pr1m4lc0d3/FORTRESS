@@ -9,6 +9,10 @@ side the two halves close into one circle — a raiding party with nowhere to fa
 down, and a fortress that never raids starves. Neither half is complete alone, and neither half is
 pure: `RAID` carries restraint, `FORTRESS` carries aggression.
 
+**The other half: [`RAID`](https://github.com/Pr1m4lc0d3/RAID).** Both halves, plus a browser
+console that reads the same pack, are described at
+[ryan-heltemes.com/mavericks-monkeys.html](https://ryan-heltemes.com/mavericks-monkeys.html).
+
 **`RAID` is released.** This repository ships `FORTRESS`; `RAID` ships separately. Each is fully
 functional alone — every skill below runs standalone — but each is one half of the doctrine, not
 the whole of it. Installed together, `FORTRESS` governs what may be claimed and `RAID` governs
