@@ -215,7 +215,12 @@ def _is_sourced(text, register):
     needle = text.strip().lower().rstrip(".")
     if not needle:
         return False
-    return any(_contains_bounded(cleared, needle) for cleared in register)
+    # LOWERCASED HERE, not left to the caller. load_register() lowercases at
+    # load, so the CLI path was fine, but lint_text() is public and a caller
+    # handing it a register in original case got silent false positives. The
+    # JS twin had exactly this bug on its CLI path. Whoever owns the comparison
+    # owns the normalisation.
+    return any(_contains_bounded(str(cleared).lower(), needle) for cleared in register)
 
 
 def _span_window(line, col, span):
@@ -239,6 +244,81 @@ def _span_window(line, col, span):
     if not following:
         return line
     return " ".join(span.split() + following)
+
+
+# Markdown structure is not part of a claim.
+#
+# FOUND BY RUNNING IT. A claim copied verbatim out of truth.md's Cleared
+# section passed as a bare sentence and failed the moment it became a bullet:
+#
+#       Standard $79, Pro $149, Elite $249, one-time    -> clean
+#     - Standard $79, Pro $149, Elite $249, one-time    -> 3 errors
+#
+# _is_sourced() asks whether the whole LINE sits inside a cleared entry, and
+# "- " does not. Table cells broke identically, because the pipes are part of
+# the line too. Most marketing copy is bullets and tables, so nearly every
+# correctly sourced number in a real draft was being flagged.
+#
+# WHY THIS DOES NOT OPEN A HOLE. Every context below is a genuine substring of
+# the claim as written, never the bare span: a context equal to the span alone
+# is refused, for the same reason _span_window() falls back to the whole line
+# rather than degrading to the token. Splitting a row into cells is the correct
+# reading rather than a loosening: a row holds several independent statements,
+# so a sourced price in one cell does not vouch for an invented figure in the
+# next.
+#
+# Mirrored exactly in console/src/lint.js. The vector file holds both to one
+# answer.
+MD_PREFIX = re.compile(r"^(?:\s*(?:[-*+]|\d+[.)])\s+|\s*>+\s*|\s*#{1,6}\s+)+")
+
+
+def _strip_markdown_prefix(line):
+    """(text, offset) with any list, quote or heading marker removed, or None."""
+    match = MD_PREFIX.match(line)
+    if not match or not match.group(0):
+        return None
+    return line[match.end():], match.end()
+
+
+def _table_cell_at(line, col):
+    """(text, offset) of the table cell containing col, or None."""
+    if "|" not in line:
+        return None
+    before = line.rfind("|", 0, max(col, 0))
+    after = line.find("|", col)
+    start = 0 if before == -1 else before + 1
+    end = len(line) if after == -1 else after
+    if start >= end:
+        return None
+    return line[start:end], start
+
+
+def _sourcing_contexts(line, col, span):
+    """Every context a span may be judged in, widest first."""
+    contexts = []
+
+    def add(text, offset):
+        trimmed = text.strip()
+        # A bare span is not evidence of sourcing. Same rule as _span_window().
+        if not trimmed or trimmed == span:
+            return
+        contexts.append(text)
+        window = _span_window(text, col - offset, span)
+        if window != text:
+            contexts.append(window)
+
+    add(line, 0)
+    stripped = _strip_markdown_prefix(line)
+    if stripped:
+        add(stripped[0], stripped[1])
+
+    cell = _table_cell_at(line, col)
+    if cell:
+        add(cell[0], cell[1])
+        cell_stripped = _strip_markdown_prefix(cell[0])
+        if cell_stripped:
+            add(cell_stripped[0], cell[1] + cell_stripped[1])
+    return contexts
 
 
 def _blank_ignored(text, ignores):
@@ -278,8 +358,8 @@ def lint_text(text, register, config):
     out = []
     for finding in find_claims(text, config):
         source_line = lines[finding.line - 1] if finding.line <= len(lines) else ""
-        window = _span_window(source_line, finding.col, finding.span)
-        if _is_sourced(source_line, register) or _is_sourced(window, register):
+        contexts = _sourcing_contexts(source_line, finding.col, finding.span)
+        if any(_is_sourced(context, register) for context in contexts):
             continue
         out.append(finding)
     return out
