@@ -153,3 +153,15 @@ The honest pitch is narrower than "this will get you customers," and it's this i
 encodes what the failures cost, so you can skip paying for them.** The doctrine, the gates, and the
 linter exist because specific mistakes were expensive to learn once. Adopting FORTRESS doesn't
 promise growth — it removes the cost of relearning `scars.md` the hard way.
+
+---
+
+## Where this came from
+
+Deliberon is a Windows desktop app that runs a council of AI agents on a hard decision and hands back a Decision Record: dissent preserved, every claim marked as proved, asserted, or estimated.
+
+FORTRESS is the claim discipline built to keep that marketing honest, published in full because a rule you cannot read is a rule you cannot hold anyone to.
+
+Pay once, it's yours, no subscription. Thirty days of the full council with no account and no card. Runs on your machine with your own model keys.
+
+https://deliberon.com
