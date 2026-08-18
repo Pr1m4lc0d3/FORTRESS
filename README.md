@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/og-fortress.png" alt="FORTRESS — hold it. Guerrilla marketing for the Proof Economy." width="100%">
+</p>
+
 # FORTRESS
 
 ### `RAID` takes ground · `FORTRESS` builds what can't be taken
