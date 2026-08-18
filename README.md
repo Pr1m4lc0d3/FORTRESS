@@ -2,7 +2,7 @@
 
 ### `RAID` takes ground · `FORTRESS` builds what can't be taken
 
-FORTRESS is the defensive half of **THE MAVERICK'S MONKEYS** — a pair of Claude Code plugins
+FORTRESS is the defensive half of **Mavericks Monkey Werx** — a pair of Claude Code plugins
 that together make an agent competent at marketing a product with no budget. The taijitu splits
 across the two: `RAID` is yang, light and initiating; `FORTRESS` is yin, dark and holding. Side by
 side the two halves close into one circle — a raiding party with nowhere to fall back gets hunted
