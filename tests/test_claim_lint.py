@@ -336,7 +336,7 @@ class TestRegisterSchema(unittest.TestCase):
             )
             with contextlib.redirect_stderr(io.StringIO()) as err:
                 register = claim_lint.load_register(register_path)
-            self.assertEqual(set(), register)
+            self.assertEqual({}, register.cleared)
             self.assertIn("malformed Cleared entry", err.getvalue())
             findings = claim_lint.lint_text(
                 "We serve 40,000 users.", register, claim_lint.DEFAULT_CONFIG
@@ -546,12 +546,13 @@ class TestSharedLintVectors(unittest.TestCase):
     )
 
     @staticmethod
-    def _verdict(rows, with_lines):
+    def _verdict(rows, with_lines, with_notes):
         """Both runners reduce a result to this shape, so they compare like for like."""
         return sorted(
             json.dumps(
                 [row["category"], row["span"], row["severity"],
-                 row.get("line") if with_lines else None],
+                 row.get("line") if with_lines else None,
+                 (row.get("note") or "") if with_notes else None],
                 ensure_ascii=False, separators=(",", ":"),
             )
             for row in rows
@@ -582,15 +583,30 @@ class TestSharedLintVectors(unittest.TestCase):
                         config, _ = claim_lint.load_config(str(path))
 
                     with_lines = any("line" in item for item in vector["expect"])
+                    with_notes = any("note" in item for item in vector["expect"])
+                    # 'registerMarkdown' runs the vector through load_register,
+                    # so the PARSER is under test too — check dates and retracted
+                    # sections only exist in the markdown, and a vector that
+                    # handed over a pre-parsed register would prove nothing about
+                    # the half of the feature that reads the file.
                     with contextlib.redirect_stderr(io.StringIO()):
+                        if "registerMarkdown" in vector:
+                            register_path = Path(tmp) / "truth.md"
+                            register_path.write_text(
+                                vector["registerMarkdown"], encoding="utf-8"
+                            )
+                            register = claim_lint.load_register(register_path)
+                        else:
+                            register = set(vector["register"])
                         findings = claim_lint.lint_text(
-                            vector["text"], set(vector["register"]), config
+                            vector["text"], register, config,
+                            today=vector.get("today"),
                         )
                     actual = self._verdict(
-                        [f._asdict() for f in findings], with_lines
+                        [f._asdict() for f in findings], with_lines, with_notes
                     )
                     self.assertEqual(
-                        self._verdict(vector["expect"], with_lines), actual,
+                        self._verdict(vector["expect"], with_lines, with_notes), actual,
                         f"{vector['name']}: claim_lint.py disagrees with the shared "
                         "vector. Either this implementation or console/src/lint.js is "
                         "wrong — do not change the vector to settle it.",

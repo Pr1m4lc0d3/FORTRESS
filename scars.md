@@ -67,3 +67,29 @@ the page.
 **Rule.** Treat a scoring-style audit as a source of *criticisms to read*, not a *score to chase*.
 A single-run number on this kind of audit is not a stable measurement — read what it flagged, judge
 whether the flag is real, and ignore the number's movement between otherwise-identical runs.
+
+---
+
+## 4. A correction written into the draft dies with the draft
+
+**Incident.** A claims register was built, filled with sourced entries, and used to gate public
+copy. It worked. Over the following months the underlying facts moved: a capability that had been
+unproven was demonstrated and signed, a ratio that had barred a claim turned out to measure the
+wrong population, and the reasoning behind one entry was found to be circular and was reversed by
+the owner. Every one of those corrections was made — in a chat, in a commit message, in the
+paragraph being edited at the time. None of them was made *in the register*. The register still
+held the superseded reasoning, with no date on any line to suggest it might have aged, and every
+later run read it as current.
+
+**Damage.** The gate kept passing copy against a version of the truth its own owner had already
+abandoned, and barred a claim that had since been cleared. Worse than a gate that fails: a gate
+that confidently approves the wrong thing while looking green. The corrections were not lost
+because anyone forgot them — they were written down somewhere that nothing reads twice.
+
+**Rule.** When a check is wrong, fix **the thing the check reads**, not the artefact you happened
+to be editing when you noticed. A miss means the watchlist, the register, or the source list is
+incomplete. A false alarm means the rule is too broad. A number nobody re-verified means the
+checking rhythm is too slow. Editing the draft fixes one draft; editing the rule fixes every run
+after it. And a register with no dates on it cannot tell you which of its lines you are relying on
+were last confirmed a year ago — so date the entries, and keep what *changed* rather than
+overwriting it, because a claim you merely stopped writing down is one you can walk back into.

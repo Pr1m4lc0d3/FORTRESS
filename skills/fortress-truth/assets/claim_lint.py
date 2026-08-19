@@ -9,6 +9,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 from typing import NamedTuple
 
@@ -103,13 +104,50 @@ DEFAULT_CONFIG = {
     "ignore": [
         DATE_FORMS,
     ],
+    # A claim that was true when it was checked is not a claim that is true now.
+    # See STALENESS_RULE.
+    "staleness": {
+        "max_age_days": 90,
+        "severity": "warn",
+        "require_checked": False,
+    },
 }
 
 
 CATCH_ALL_IGNORES = {".*", ".+", "^.*$", "(.*)"}
 VALID_SEVERITIES = ("error", "warn")
 SOURCE_SUFFIX = " — source:"
+CHECKED_SUFFIX = " — checked:"
+REASON_SUFFIX = " — reason:"
 WINDOW_WORDS = 3
+
+# The two sections that hold claims which USED to be sayable. Both are scanned
+# FOR in the draft, which is the opposite direction from Cleared: a cleared
+# entry answers "may I say this?", a retracted entry answers "am I still saying
+# something I already withdrew?".
+#
+# 'Uncleared' is deliberately NOT among them. An Uncleared line describes a
+# CLASS of claim ("any user or adoption count") rather than the literal words of
+# one, so scanning drafts for its text would match nothing useful and would
+# train people to write register entries as keyword bait. Changed and
+# Contradicted are different in kind: by construction they hold the exact wording
+# that used to ship, which is precisely what a stale draft still contains.
+RETRACTED_SECTIONS = ("changed", "contradicted")
+
+# Retracted findings are NOT tunable, and that is the point. A Changed entry is
+# the register owner's own statement that the wording is no longer true; letting
+# a config downgrade it to 'warn' would be a per-claim waiver by the back door,
+# and §6 of the skill says there is no per-claim waiver. Staleness IS tunable,
+# because how fast a fact rots is genuinely domain-specific — a price moves in
+# weeks, a founding date never does.
+RETRACTED_SEVERITY = "error"
+
+STALENESS_RULE = (
+    "'staleness' may set 'max_age_days' (positive integer), 'severity' "
+    "(error|warn) and 'require_checked' (boolean). All three are printed on "
+    "every run: a long max_age_days is a weakening and has to be visible in the "
+    "same output as the verdict it produced."
+)
 
 
 class ConfigRefused(Exception):
@@ -122,18 +160,104 @@ class Finding(NamedTuple):
     span: str
     severity: str
     col: int = 0
+    note: str = ""
 
 
-def load_register(path):
-    """Return the set of lowercased 'Cleared' lines from a truth register.
+class RetractedEntry(NamedTuple):
+    """A claim the register says is no longer sayable, and why."""
+
+    claim: str
+    state: str  # "changed" | "contradicted"
+    reason: str
+    line: int = 0
+
+
+class Register:
+    """Cleared claims with their check dates, plus the retracted ones.
+
+    ITERABLE OVER THE CLEARED TEXT, so anything that previously received a set
+    of cleared strings still works when handed a Register. That compatibility is
+    load-bearing rather than cosmetic: console/tests/lint-vectors.json hands
+    lint_text() a bare list, and those vectors are the only thing holding this
+    file and console/src/lint.js to the same answer.
+    """
+
+    def __init__(self, cleared=None, retracted=None):
+        # {cleared text (lowercased) -> datetime.date | None}
+        self.cleared = dict(cleared or {})
+        self.retracted = list(retracted or [])
+
+    def __iter__(self):
+        return iter(self.cleared)
+
+    def __len__(self):
+        return len(self.cleared)
+
+    def __contains__(self, item):
+        return item in self.cleared
+
+    @property
+    def undated(self):
+        return [text for text, when in self.cleared.items() if when is None]
+
+
+def _coerce_register(register):
+    """Accept a Register, a mapping, or a bare set/list of cleared strings."""
+    if isinstance(register, Register):
+        return register
+    if isinstance(register, dict):
+        return Register(cleared=register)
+    return Register(cleared={str(entry).lower(): None for entry in (register or [])})
+
+
+def _split_checked(entry):
+    """(entry without its ' — checked:' tail, parsed date or None, raw tail).
+
+    The tail is REMOVED from the text that goes into the cleared set. It has to
+    be: sourcing is containment of the draft's words inside a cleared entry, so
+    leaving '2026-08-18' in the entry would let any draft mentioning that date
+    ride in on a claim that merely happened to be checked that day. The metadata
+    about a claim is not part of the claim.
+    """
+    lowered = entry.lower()
+    at = lowered.rfind(CHECKED_SUFFIX.lower())
+    if at == -1:
+        return entry, None, ""
+    head = entry[:at]
+    tail = entry[at + len(CHECKED_SUFFIX):].strip()
+    match = re.match(r"^(\d{4})-(\d{2})-(\d{2})\b", tail)
+    if not match:
+        return head, None, tail
+    try:
+        return head, date(*(int(part) for part in match.groups())), tail
+    except ValueError:
+        return head, None, tail
+
+
+def _as_date(value):
+    """A date from a date, an ISO 'YYYY-MM-DD' string, or None."""
+    if value is None or isinstance(value, date):
+        return value
+    match = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", str(value).strip())
+    if not match:
+        raise ValueError(f"expected a YYYY-MM-DD date, got {value!r}")
+    return date(*(int(part) for part in match.groups()))
+
+
+def load_register(path, on_warning=None):
+    """Return a Register parsed from a truth register file.
 
     A Cleared bullet without a ' — source:' suffix is MALFORMED and is excluded.
     An unsourced register entry must not be able to source anything — otherwise
-    the register becomes a place to launder a number by writing it down.
+    the register becomes a place to launder a number by writing it down. A
+    Changed or Contradicted bullet without a ' — reason:' suffix is malformed for
+    the same reason, read the other way round: a retraction that does not say
+    what replaced the claim is not a retraction anyone can act on.
     """
-    cleared = set()
+    warn = on_warning or (lambda message: print(message, file=sys.stderr))
+    register = Register()
     if not Path(path).exists():
-        return cleared
+        return register
     section = None
     for lineno, raw in enumerate(
         Path(path).read_text(encoding="utf-8").splitlines(), start=1
@@ -142,18 +266,61 @@ def load_register(path):
         if line.lower().startswith("## "):
             section = line[3:].strip().lower()
             continue
-        if section == "cleared" and line.startswith("- "):
-            entry = line[2:].strip()
+        if not line.startswith("- "):
+            continue
+        entry = line[2:].strip()
+        if section == "cleared":
             if SOURCE_SUFFIX.lower() not in entry.lower():
-                print(
+                warn(
                     f"claim-lint: WARNING: {Path(path)}:{lineno}: malformed Cleared "
                     "entry, no 'source:' suffix (the template's em-dash form); "
-                    f"IGNORED, it sources nothing: {entry!r}",
-                    file=sys.stderr,
+                    f"IGNORED, it sources nothing: {entry!r}"
                 )
                 continue
-            cleared.add(entry.lower())
-    return cleared
+            text, checked, tail = _split_checked(entry)
+            if tail and checked is None:
+                warn(
+                    f"claim-lint: WARNING: {Path(path)}:{lineno}: unparseable "
+                    f"'checked:' date {tail!r}, expected YYYY-MM-DD; the entry still "
+                    "sources, but it is treated as NEVER CHECKED."
+                )
+            key = text.lower()
+            # Duplicates keep the NEWEST date. The oldest would be the safer
+            # default for a claim's age, but a register with the same claim
+            # written twice has one of them re-verified, and reporting the stale
+            # copy would report a line the maintainer already fixed.
+            previous = register.cleared.get(key)
+            if key not in register.cleared or (
+                checked is not None and (previous is None or checked > previous)
+            ):
+                register.cleared[key] = checked
+        elif section in RETRACTED_SECTIONS:
+            lowered = entry.lower()
+            at = lowered.find(REASON_SUFFIX.lower())
+            if at == -1:
+                warn(
+                    f"claim-lint: WARNING: {Path(path)}:{lineno}: malformed "
+                    f"{section.title()} entry, no 'reason:' suffix; IGNORED. A "
+                    "retraction that does not say what replaced the claim cannot be "
+                    f"acted on: {entry!r}"
+                )
+                continue
+            claim = entry[:at].strip()
+            if not claim:
+                warn(
+                    f"claim-lint: WARNING: {Path(path)}:{lineno}: {section.title()} "
+                    "entry has a reason but no claim text before it; IGNORED."
+                )
+                continue
+            register.retracted.append(
+                RetractedEntry(
+                    claim=claim,
+                    state=section,
+                    reason=entry[at + len(REASON_SUFFIX):].strip(),
+                    line=lineno,
+                )
+            )
+    return register
 
 
 def strip_noise(text):
@@ -199,6 +366,90 @@ def _contains_bounded(haystack, needle):
     return re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", haystack) is not None
 
 
+def _flatten(text):
+    """(whitespace-collapsed text, index map back into the original).
+
+    Retracted claims are matched against this, NOT line by line. A withdrawn
+    sentence that a draft happens to hard-wrap across two lines is still the
+    withdrawn sentence, and a line-scoped search would pass it clean — a false
+    negative, which is the failure this whole tool exists to prevent. Collapsing
+    runs of whitespace to one space and keeping the offsets lets one match span
+    a line break and still report the line it started on.
+    """
+    chars = []
+    offsets = []
+    previous_was_space = False
+    for index, char in enumerate(text):
+        if char.isspace():
+            if previous_was_space:
+                continue
+            chars.append(" ")
+            previous_was_space = True
+        else:
+            chars.append(char)
+            previous_was_space = False
+        offsets.append(index)
+    return "".join(chars), offsets
+
+
+def find_retracted(text, retracted):
+    """Findings for draft text that still says something the register withdrew.
+
+    This runs INDEPENDENTLY of claim-shaped detection, and that independence is
+    the point. "We serve enterprise customers directly" carries no number, no
+    superlative and no quote, so every detector in find_claims() passes it — yet
+    if the register's Changed section says that wording was superseded, shipping
+    it is a worse failure than any unsourced statistic, because the register
+    already knows it is wrong.
+    """
+    cleaned = strip_noise(text)
+    flat, offsets = _flatten(cleaned)
+    lowered = flat.lower()
+    findings = []
+    for entry in retracted:
+        needle = " ".join(entry.claim.split()).lower()
+        if not needle:
+            continue
+        pattern = r"(?<!\w)" + re.escape(needle) + r"(?!\w)"
+        for match in re.finditer(pattern, lowered):
+            origin = offsets[match.start()]
+            line = cleaned.count("\n", 0, origin) + 1
+            col = origin - (cleaned.rfind("\n", 0, origin) + 1)
+            findings.append(
+                Finding(
+                    line=line,
+                    category="retracted",
+                    span=flat[match.start():match.end()],
+                    severity=RETRACTED_SEVERITY,
+                    col=col,
+                    note=(
+                        f"register marks this {entry.state.upper()} "
+                        f"(truth.md:{entry.line}) — {entry.reason}"
+                    ),
+                )
+            )
+    return findings
+
+
+def _staleness_note(checked, settings, today):
+    """Why this cleared entry should not be leaned on, or None if it is fine."""
+    if checked is None:
+        if settings.get("require_checked"):
+            return (
+                "sourced but NEVER dated; add ' — checked: YYYY-MM-DD' to its "
+                "register entry or re-verify it"
+            )
+        return None
+    age = (today - checked).days
+    limit = settings.get("max_age_days", DEFAULT_CONFIG["staleness"]["max_age_days"])
+    if age > limit:
+        return (
+            f"last checked {checked.isoformat()}, {age} days ago (limit {limit}); "
+            "re-fetch the source before shipping this"
+        )
+    return None
+
+
 def _is_sourced(text, register):
     """Word-bounded containment: the claim text must appear inside a cleared entry.
 
@@ -212,15 +463,28 @@ def _is_sourced(text, register):
 
     Both are the same false negative.
     """
+    return _matching_entry(text, register) is not None
+
+
+def _matching_entry(text, register):
+    """The cleared entry that sources this text, or None.
+
+    The same comparison as _is_sourced() and deliberately one function rather
+    than two: which entry matched is what tells staleness WHOSE date to read,
+    and a second copy of this rule is a second place for it to drift.
+    """
     needle = text.strip().lower().rstrip(".")
     if not needle:
-        return False
+        return None
     # LOWERCASED HERE, not left to the caller. load_register() lowercases at
     # load, so the CLI path was fine, but lint_text() is public and a caller
     # handing it a register in original case got silent false positives. The
     # JS twin had exactly this bug on its CLI path. Whoever owns the comparison
     # owns the normalisation.
-    return any(_contains_bounded(str(cleared).lower(), needle) for cleared in register)
+    for cleared in register:
+        if _contains_bounded(str(cleared).lower(), needle):
+            return cleared
+    return None
 
 
 def _span_window(line, col, span):
@@ -352,16 +616,49 @@ def find_claims(text, config):
     return findings
 
 
-def lint_text(text, register, config):
-    """Return findings whose containing line is not sourced in the register."""
+def lint_text(text, register, config, today=None):
+    """Findings for claims that are unsourced, gone stale, or already withdrawn.
+
+    Three questions, asked in that order, because they are three different
+    failures and only the first one was ever asked before:
+
+    1. UNSOURCED — nothing in the register backs this. (find_claims)
+    2. STALE — something backs it, but nobody has re-verified it recently
+       enough to be shipping it today.
+    3. RETRACTED — the register itself says this wording was superseded or is
+       contradicted. Checked over the whole draft, not just claim-shaped spans.
+    """
+    register = _coerce_register(register)
+    settings = {**DEFAULT_CONFIG["staleness"], **(config.get("staleness") or {})}
+    today = _as_date(today) or date.today()
     lines = text.splitlines()
     out = []
+    reported_stale = set()
     for finding in find_claims(text, config):
         source_line = lines[finding.line - 1] if finding.line <= len(lines) else ""
         contexts = _sourcing_contexts(source_line, finding.col, finding.span)
-        if any(_is_sourced(context, register) for context in contexts):
+        entry = None
+        for context in contexts:
+            entry = _matching_entry(context, register.cleared)
+            if entry is not None:
+                break
+        if entry is None:
+            out.append(finding)
             continue
-        out.append(finding)
+        note = _staleness_note(register.cleared.get(entry), settings, today)
+        # One stale finding per (line, entry). A sentence quoting three numbers
+        # from one register line has one problem, not three.
+        if note is None or (finding.line, entry) in reported_stale:
+            continue
+        reported_stale.add((finding.line, entry))
+        out.append(
+            finding._replace(
+                category="stale",
+                severity=settings.get("severity", "warn"),
+                note=note,
+            )
+        )
+    out.extend(find_retracted(text, register.retracted))
     return out
 
 
@@ -509,6 +806,45 @@ def validate_config(config):
             "every category is set to 'warn', so the run can never fail. "
             + CONFIG_RULE
         )
+    validate_staleness(config.get("staleness", {}))
+
+
+def validate_staleness(settings):
+    """Refuse a staleness block that is nonsense — but never one that is merely lax.
+
+    A max_age_days of 100000 retires the staleness check as surely as a wide
+    ignore retires a category, and it is refused for exactly as long as a wide
+    ignore is: not at all. The defence is the same one, and the only honest one
+    available — describe_config() prints all three settings on every run, so a
+    register nobody re-checks is visible in the same output as its green verdict.
+    """
+    if not isinstance(settings, dict):
+        raise ConfigRefused(f"'staleness' must be an object. {STALENESS_RULE}")
+    unknown = set(settings) - {"max_age_days", "severity", "require_checked"}
+    if unknown:
+        raise ConfigRefused(
+            f"unknown staleness key(s) {', '.join(sorted(unknown))}. "
+            f"{STALENESS_RULE}"
+        )
+    if "max_age_days" in settings:
+        age = settings["max_age_days"]
+        if isinstance(age, bool) or not isinstance(age, int) or age < 1:
+            raise ConfigRefused(
+                f"staleness.max_age_days must be a positive integer, got {age!r}. "
+                f"{STALENESS_RULE}"
+            )
+    if "severity" in settings and settings["severity"] not in VALID_SEVERITIES:
+        raise ConfigRefused(
+            f"invalid staleness.severity {settings['severity']!r}; expected one of "
+            f"{', '.join(VALID_SEVERITIES)}. {STALENESS_RULE}"
+        )
+    if "require_checked" in settings and not isinstance(
+        settings["require_checked"], bool
+    ):
+        raise ConfigRefused(
+            "staleness.require_checked must be true or false, got "
+            f"{settings['require_checked']!r}. {STALENESS_RULE}"
+        )
 
 
 def describe_config(config, source):
@@ -525,8 +861,12 @@ def describe_config(config, source):
     )
     ignores = list(config.get("ignore", []))
     shown = "; ".join(ignores) if ignores else "(none)"
+    stale = {**DEFAULT_CONFIG["staleness"], **(config.get("staleness") or {})}
     return (
-        f"claim-lint: config: {source} | categories: {categories} "
+        f"claim-lint: config: {source} | categories: {categories}, "
+        f"retracted={RETRACTED_SEVERITY} (fixed) "
+        f"| staleness: max_age_days={stale['max_age_days']}, "
+        f"severity={stale['severity']}, require_checked={str(stale['require_checked']).lower()} "
         f"| ignore patterns: {len(ignores)}: {shown}"
     )
 
@@ -554,13 +894,22 @@ def load_config(explicit=None):
             merged = {**DEFAULT_CONFIG, **loaded}
             if "severity" in loaded:
                 merged["severity"] = {**DEFAULT_CONFIG["severity"], **loaded["severity"]}
+            if "staleness" in loaded:
+                if not isinstance(loaded["staleness"], dict):
+                    raise ConfigRefused(
+                        f"'staleness' must be an object. {STALENESS_RULE}"
+                    )
+                merged["staleness"] = {
+                    **DEFAULT_CONFIG["staleness"],
+                    **loaded["staleness"],
+                }
             validate_config(merged)
             return merged, str(candidate)
     validate_config(DEFAULT_CONFIG)
     return DEFAULT_CONFIG, "built-in defaults"
 
 
-def lint_path(target, register, config):
+def lint_path(target, register, config, today=None):
     """Lint a file or, for a directory, every markdown/text file beneath it."""
     target = Path(target)
     files = [target] if target.is_file() else sorted(
@@ -569,9 +918,30 @@ def lint_path(target, register, config):
     results = []
     for path in files:
         text = path.read_text(encoding="utf-8", errors="replace")
-        for finding in lint_text(text, register, config):
+        for finding in lint_text(text, register, config, today=today):
             results.append((path, finding))
     return results
+
+
+def describe_register(register, settings, today):
+    """One line naming what the register actually holds, printed on every run.
+
+    A register is not a static asset — it rots. A run that says nothing about
+    how much of the register is undated or overdue lets a green verdict stand in
+    for a register nobody has touched in a year.
+    """
+    register = _coerce_register(register)
+    undated = len(register.undated)
+    overdue = sum(
+        1
+        for when in register.cleared.values()
+        if when is not None and (today - when).days > settings["max_age_days"]
+    )
+    return (
+        f"claim-lint: register: {len(register.cleared)} cleared "
+        f"({undated} undated, {overdue} past {settings['max_age_days']}d), "
+        f"{len(register.retracted)} retracted"
+    )
 
 
 def main(argv=None):
@@ -591,7 +961,19 @@ def main(argv=None):
         action="store_true",
         help="Print findings without failing (always exits 0)",
     )
+    parser.add_argument(
+        "--today",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Treat this as today's date when ageing the register (default: today)",
+    )
     args = parser.parse_args(argv)
+
+    try:
+        today = _as_date(args.today) or date.today()
+    except ValueError as exc:
+        print(f"claim-lint: {exc}", file=sys.stderr)
+        return 2
 
     try:
         config, config_source = load_config(args.config)
@@ -617,25 +999,40 @@ def main(argv=None):
         return 2
 
     register = load_register(register_path)
-    results = lint_path(target, register, config)
+    settings = {**DEFAULT_CONFIG["staleness"], **(config.get("staleness") or {})}
+    print(describe_register(register, settings, today), file=sys.stderr)
+    results = lint_path(target, register, config, today=today)
 
     errors = 0
     for path, finding in results:
         if finding.severity == "error":
             errors += 1
-        print(
-            f"{path}:{finding.line}: {finding.severity}: "
-            f"unsourced {finding.category}: {finding.span!r}"
-        )
+        if finding.category == "retracted":
+            headline = f"RETRACTED claim still in the copy: {finding.span!r}"
+        elif finding.category == "stale":
+            headline = f"stale source for: {finding.span!r}"
+        else:
+            headline = f"unsourced {finding.category}: {finding.span!r}"
+        detail = f" — {finding.note}" if finding.note else ""
+        print(f"{path}:{finding.line}: {finding.severity}: {headline}{detail}")
 
     if not results:
-        print("claim-lint: no unsourced claims found.")
+        print("claim-lint: no unsourced, stale or retracted claims found.")
     elif errors:
+        retracted = sum(1 for _, f in results if f.category == "retracted")
+        tail = (
+            f" {retracted} of them "
+            f"{'is' if retracted == 1 else 'are'} RETRACTED — the register already "
+            "says that wording is superseded or contradicted, so the fix is the "
+            "copy, not the register."
+            if retracted
+            else ""
+        )
         print(
-            f"\nclaim-lint: {errors} unsourced claim(s). "
+            f"\nclaim-lint: {errors} claim(s) failed. "
             "Source them in .monkeys/truth.md or cut them. There is no per-finding "
             "waiver flag; an 'ignore' pattern silences by shape, and every one in "
-            "effect is printed in the config line above.",
+            f"effect is printed in the config line above.{tail}",
             file=sys.stderr,
         )
 

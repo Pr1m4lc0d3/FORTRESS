@@ -1,5 +1,6 @@
 {
-  "_comment": "Tune per project. This file may set 'severity' and 'ignore' ONLY: a 'patterns' key is refused (exit 2), as is an all-'warn' severity map, an unrecognised severity value, and a catch-all ignore. An ignore pattern blanks the region of text it matches before detection runs, and also drops any finding whose span it fullmatches; keep each one as narrow as the false positive requires ('\\b4471\\b', never '\\d+'), because a broad ignore CAN silence a whole category. Every ignore pattern in effect is printed on every run — that visibility is the only check on how wide you make them. The shipped entry exempts genuine DATE FORMATS (ISO and written) only. A bare year is a claim and is flagged.",
+  "_comment": "Tune per project. This file may set 'severity', 'ignore' and 'staleness' ONLY: a 'patterns' key is refused (exit 2), as is an all-'warn' severity map, an unrecognised severity value, and a catch-all ignore. An ignore pattern blanks the region of text it matches before detection runs, and also drops any finding whose span it fullmatches; keep each one as narrow as the false positive requires ('\\b4471\\b', never '\\d+'), because a broad ignore CAN silence a whole category. Every ignore pattern in effect is printed on every run — that visibility is the only check on how wide you make them. The shipped entry exempts genuine DATE FORMATS (ISO and written) only. A bare year is a claim and is flagged. The 'retracted' category is NOT listed under severity and cannot be tuned: a Changed or Contradicted entry is this register's own statement that the wording is no longer sayable, so downgrading it would be a per-claim waiver, and there is no per-claim waiver.",
+  "_staleness": "max_age_days is how long a ' — checked:' date stays good before a claim leaning on it is reported. severity is error or warn. require_checked makes an undated Cleared entry report too — leave it false until the register is actually dated, then turn it on. All three print on every run: a long max_age_days is a weakening and has to be visible in the same output as the verdict it produced.",
   "severity": {
     "number": "error",
     "magnitude": "error",
@@ -7,6 +8,11 @@
     "comparative": "error",
     "testimonial": "error",
     "absolute": "warn"
+  },
+  "staleness": {
+    "max_age_days": 90,
+    "severity": "warn",
+    "require_checked": false
   },
   "ignore": [
     "\\b\\d{4}-\\d{2}-\\d{2}\\b|\\b(?:\\d{1,2}\\s+)?(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec)\\.?\\s+(?:\\d{1,2},?\\s+)?\\d{4}\\b"
