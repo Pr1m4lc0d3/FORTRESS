@@ -1,6 +1,6 @@
 {
   "name": "fortress",
-  "description": "FORTRESS: build what can't be taken. The defensive half of guerrilla marketing for AI agents — a cleared/uncleared claim register with an enforcing linter, motte-and-bailey asset sorting, per-account standing, a human publish gate, and durable-vs-noise measurement.",
+  "description": "FORTRESS: build what can't be taken. The defensive half of guerrilla marketing for the Proof Economy — a claim register with an enforcing linter, check dates that report a source nobody has re-verified, retraction sections that catch copy still carrying a withdrawn claim, motte-and-bailey asset sorting, per-account standing, a human publish gate, and durable-vs-noise measurement.",
   "version": "0.1.0",
   "author": {
     "name": "Pr1m4lc0d3"
