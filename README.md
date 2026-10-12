@@ -170,5 +170,21 @@ Pay once, it's yours, no subscription. Thirty days of the full council with no a
 
 https://deliberon.com
 
-Also on Agensi, if you would rather install these in one step and have them keep themselves
-updated: https://www.agensi.io/creators/ryan-heltemes
+## On Agensi
+
+Every skill here is sold as its own listing, so you can buy the one you need instead of seven you
+don't. One install step, and they keep themselves updated.
+
+| Skill | Price | Listing |
+|---|---|---|
+| **FORTRESS** (the front door) | $12 | https://www.agensi.io/skills/fortress-build-what-can-t-be-taken |
+| FORTRESS Bailey | $5 | https://www.agensi.io/skills/fortress-bailey-rented-ground-honestly-tracked |
+| FORTRESS Gate | $5 | https://www.agensi.io/skills/fortress-gate-nothing-sends-without-a-human |
+| FORTRESS Measure | $5 | https://www.agensi.io/skills/fortress-measure-few-numbers-honestly |
+| FORTRESS Motte | $5 | https://www.agensi.io/skills/fortress-motte-assets-nobody-can-confiscate |
+| FORTRESS Standing | $5 | https://www.agensi.io/skills/fortress-standing-trust-before-you-spend-it |
+| FORTRESS Truth | $12 | https://www.agensi.io/skills/fortress-truth-a-linter-that-blocks-unsourced-claims |
+
+FORTRESS Truth ships the linter, so it is the one to buy if you only want the claim gate. RAID and
+SCOUT sit beside this pack on the creator page:
+https://www.agensi.io/creators/ryan-heltemes
